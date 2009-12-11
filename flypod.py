@@ -131,35 +131,48 @@ def analyze_directory(dirName):
     analyze_directory('/home/cardini/2/')
     """ 
     filenames = os.listdir(dirName)
+    spnum = -1
     fig1 = pylab.figure()
     fig2 = pylab.figure()
     fig3 = pylab.figure()
     for f in range(len(filenames)):
-        print f
-        filename = dirName+filenames[f]
-        centers = get_centers(filename,0)
-        cx, cy, r = circle_fit(centers['x'],centers['y'])
-        orientations = numpy.arctan2(centers['x']-cx,centers['y']-cy)*180/numpy.pi
-        
-        pylab.figure(fig1.number)
-        pylab.subplot(221+f)
-        pylab.plot(centers['x'],centers['y'])
-        pylab.hold(True)
-        th = range(0,700)
-        th = numpy.array(th)/100.0
-        pylab.plot(r*numpy.cos(th)+cx,r*numpy.sin(th)+cy)
-        pylab.hold(False)
-        pylab.draw()
-        
-        pylab.figure(fig2.number)
-        pylab.subplot(221+f)
-        pylab.hist(orientations)
-        pylab.draw()
-        
-        pylab.figure(fig3.number)
-        pylab.subplot(221+f,polar=True)
-        orw,n,b,bc = rose(orientations,360,1)
-        pylab.draw()  
+        filename = filenames[f]
+        csvFilename = filename[:-3]+'csv'
+        csvFileExists = False
+        if filename[-3:] == 'fmf':
+            spnum = spnum+1
+            for fname in filenames:
+                if fname == csvFilename:
+                    csvFileExists = True
+                    
+            if csvFileExists:
+                centers = pylab.csv2rec(dirName+csvFilename)
+            else:
+                centers = get_centers(dirName+filename,0)
+                pylab.rec2csv(centers,dirName+csvFilename)
+                
+            cx, cy, r = circle_fit(centers['x'],centers['y'])
+            orientations = numpy.arctan2(centers['x']-cx,centers['y']-cy)*180/numpy.pi
+            
+            pylab.figure(fig1.number)
+            pylab.subplot(221+spnum)
+            pylab.plot(centers['x'],centers['y'])
+            pylab.hold(True)
+            th = range(0,700)
+            th = numpy.array(th)/100.0
+            pylab.plot(r*numpy.cos(th)+cx,r*numpy.sin(th)+cy)
+            pylab.hold(False)
+            pylab.draw()
+            
+            pylab.figure(fig2.number)
+            pylab.subplot(221+spnum)
+            pylab.hist(orientations)
+            pylab.draw()
+            
+            pylab.figure(fig3.number)
+            pylab.subplot(221+spnum,polar=True)
+            orw,n,b,bc = rose(orientations,360,1)
+            pylab.draw()  
     return
 
 
