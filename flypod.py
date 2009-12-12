@@ -14,60 +14,67 @@ import os
 
 pylab.ion()
 
-def get_centers(fileName,showFrames=0):
-    """find center of fly in fmf, returns record array with x,y, and time
+def get_centers(filenames,showFrames=0):
+    """find center of fly in fmf files, returns record array with x,y, and time
     
     arguments:      
-    filename        .fmf movie
+    filename        list of .fmf movie files or single .fmf movie file
     showFrames      0 [default] or 1
     
     example:
     centers = get_centers('/home/cardini/2/movie20091202_165430.fmf',0)
     """ 
-    fmf = FMF.FlyMovie(fileName)
-
-    if showFrames:    
+    if isinstance(filenames,str):
+        filenames = [filenames]
+        
+    if showFrames:
         ax = pylab.axes()
-
+        
     top = 25
     bottom = 25
     left = 25
     right =  25
+    
+    cents = []
 
-    nFrames = fmf.get_n_frames()
-
-    centers = numpy.recarray((nFrames,), [('x',numpy.float),('y',numpy.float),('t',numpy.float)])
-
-    for frameNumber in range(nFrames):
-    #for frameNumber in range(0,10000,300):
-        frame,timestamp = fmf.get_frame(frameNumber)
+    for f in range(len(filenames)):
+        if filenames[f][-3:] == 'fmf':
         
-        ROIFrame = frame[top:-bottom,left:-right]
-        #invertedFrame = 255 - ROIFrame
-        #invertedFrame = invertedFrame - 120
+            fmf = FMF.FlyMovie(filenames[f])
 
-        threshFrame = ROIFrame < numpy.mean(ROIFrame) - 2*numpy.std(ROIFrame)
+            nFrames = fmf.get_n_frames()
 
-        w,h = threshFrame.shape
-        X = numpy.arange(w)
-        Y = numpy.arange(h)
-        cX = numpy.sum(numpy.sum(threshFrame,0)*X)/numpy.sum(threshFrame)
-        cY = numpy.sum(numpy.sum(threshFrame,1)*Y)/numpy.sum(threshFrame)
-        
-        if showFrames and numpy.mod(frameNumber,100) == 0:
-            #pylab.imshow(threshFrame)
-            pylab.imshow(ROIFrame)
-            pylab.hold(True)
-            pylab.scatter(cX,cY)
-            pylab.title('frame '+str(frameNumber)+' of '+str(nFrames))
-            pylab.draw()
-            pylab.hold(False)
+            for frameNumber in range(nFrames):
+            #for frameNumber in range(0,10000,300):
+                frame,timestamp = fmf.get_frame(frameNumber)
+                
+                ROIFrame = frame[top:-bottom,left:-right]
+                #invertedFrame = 255 - ROIFrame
+                #invertedFrame = invertedFrame - 120
 
-        centers[frameNumber] = (cX,cY,timestamp)
+                threshFrame = ROIFrame < numpy.mean(ROIFrame) - 2*numpy.std(ROIFrame)
 
+                w,h = threshFrame.shape
+                X = numpy.arange(w)
+                Y = numpy.arange(h)
+                cX = numpy.sum(numpy.sum(threshFrame,0)*X)/numpy.sum(threshFrame)
+                cY = numpy.sum(numpy.sum(threshFrame,1)*Y)/numpy.sum(threshFrame)
+                
+                if showFrames and numpy.mod(frameNumber,100) == 0:
+                    #pylab.imshow(threshFrame)
+                    pylab.imshow(ROIFrame)
+                    pylab.hold(True)
+                    pylab.scatter(cX,cY)
+                    pylab.title('frame '+str(frameNumber)+' of '+str(nFrames))
+                    pylab.draw()
+                    pylab.hold(False)
+
+                cents.append((cX,cY,timestamp))
+
+    centers = numpy.rec.fromarrays(numpy.transpose(cents), [('x',numpy.float),('y',numpy.float),('t',numpy.float)])
     if showFrames:
         pylab.figure()
-        pylab.scatter(centers['x'],centers['y'])
+        pylab.scatter(centers.x,centers.y)
         pylab.draw()
 
     return centers
@@ -80,7 +87,7 @@ def circle_fit(dataX,dataY):
     dataY       numpy array containing y data (must be same size as dataX)
     
     example:
-    cx, cy, r = analyze.circle_fit(x,y)
+    cx, cy, r = flypod.circle_fit(x,y)
     """ 
     n = len(dataX)
     a = numpy.ones((n,3))
@@ -131,6 +138,8 @@ def analyze_directory(dirName):
     analyze_directory('/home/cardini/2/')
     """ 
     filenames = os.listdir(dirName)
+    c = get_centers([os.path.join(dirName,f) for f in filenames],0)
+    cx, cy, r = circle_fit(c.x,c.y)
     spnum = -1
     fig1 = pylab.figure()
     fig2 = pylab.figure()
@@ -151,7 +160,7 @@ def analyze_directory(dirName):
                 centers = get_centers(dirName+filename,0)
                 pylab.rec2csv(centers,dirName+csvFilename)
                 
-            cx, cy, r = circle_fit(centers['x'],centers['y'])
+            #cx, cy, r = circle_fit(centers['x'],centers['y'])
             orientations = numpy.arctan2(centers['x']-cx,centers['y']-cy)*180/numpy.pi
             
             pylab.figure(fig1.number)
