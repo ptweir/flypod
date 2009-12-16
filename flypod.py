@@ -32,15 +32,15 @@ def get_centers(filenames,showFrames=0):
         
     top = 25
     bottom = 25
-    left = 25
-    right =  25
+    left = 20
+    right =  30
     
     cents = []
 
-    for f in range(len(filenames)):
-        if filenames[f][-3:] == 'fmf':
+    for f,filename in enumerate(filenames):
+        if filename[-3:] == 'fmf':
         
-            fmf = FMF.FlyMovie(filenames[f])
+            fmf = FMF.FlyMovie(filename)
 
             nFrames = fmf.get_n_frames()
 
@@ -54,7 +54,7 @@ def get_centers(filenames,showFrames=0):
 
                 threshFrame = ROIFrame < numpy.mean(ROIFrame) - 2*numpy.std(ROIFrame)
 
-                w,h = threshFrame.shape
+                h,w = threshFrame.shape
                 X = numpy.arange(w)
                 Y = numpy.arange(h)
                 cX = numpy.sum(numpy.sum(threshFrame,0)*X)/numpy.sum(threshFrame)
@@ -144,8 +144,7 @@ def analyze_directory(dirName):
     fig1 = pylab.figure()
     fig2 = pylab.figure()
     fig3 = pylab.figure()
-    for f in range(len(filenames)):
-        filename = filenames[f]
+    for f, filename in enumerate(filenames):
         csvFilename = filename[:-3]+'csv'
         csvFileExists = False
         if filename[-3:] == 'fmf':
