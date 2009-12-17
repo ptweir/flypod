@@ -5,6 +5,7 @@ PTW 12/10/2009
 
 from __future__ import division
 import motmot.FlyMovieFormat.FlyMovieFormat as FMF
+import motmot.imops.imops as imops
 import sys
 import matplotlib
 matplotlib.use('tkagg')
@@ -13,6 +14,17 @@ import numpy
 import os
 
 pylab.ion()
+
+def convert(frame,format):
+    if format in ['RGB8','ARGB8','YUV411','YUV422']:
+        frame = imops.to_rgb8(format,frame)
+    elif format in ['MONO8','MONO16']:
+        frame = imops.to_mono8(format,frame)
+    elif (format.startswith('MONO8:') or
+          format.startswith('MONO32f:')):
+        # bayer
+        frame = imops.to_rgb8(format,frame)
+    return frame
 
 def get_centers(filenames,showFrames=0):
     """find center of fly in fmf files, returns record array with x,y, and time
@@ -29,6 +41,7 @@ def get_centers(filenames,showFrames=0):
         
     if showFrames:
         ax = pylab.axes()
+        pylab.cm.jet
         
     top = 25
     bottom = 25
