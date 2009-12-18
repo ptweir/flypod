@@ -5,7 +5,9 @@ PTW 12/10/2009
 
 from __future__ import division
 import motmot.FlyMovieFormat.FlyMovieFormat as FMF
+from pygarrayimage.arrayimage import ArrayInterfaceImage
 import motmot.imops.imops as imops
+from pyglet import window
 import sys
 import matplotlib
 matplotlib.use('tkagg')
@@ -39,14 +41,13 @@ def get_centers(filenames,showFrames=0):
     if isinstance(filenames,str):
         filenames = [filenames]
         
-    if showFrames:
-        ax = pylab.axes()
-        pylab.cm.jet
-        
     top = 25
     bottom = 25
     left = 20
     right =  30
+    
+    COLOR = False
+    ZOOM = 10
     
     cents = []
 
@@ -56,6 +57,24 @@ def get_centers(filenames,showFrames=0):
             fmf = FMF.FlyMovie(filename)
 
             nFrames = fmf.get_n_frames()
+            
+            if showFrames:
+                frame,timestamp = fmf.get_frame(0)
+                ROIFrame = frame[top:-bottom,left:-right]
+                dispFrame = convert(ROIFrame,fmf.format)
+                if COLOR == True:
+                    dispFrame = numpy.array([dispFrame,dispFrame,dispFrame])
+                    dispFrame = numpy.swapaxes(dispFrame,0,2)
+                    dispFrame = numpy.swapaxes(dispFrame,0,1)
+                
+                dispFrame = numpy.repeat(dispFrame,ZOOM,axis=0)
+                dispFrame = numpy.repeat(dispFrame,ZOOM,axis=1)
+                wnd = window.Window(visible=False, resizable=True)
+                aii = ArrayInterfaceImage(dispFrame)
+                img = aii.texture
+                wnd.width = img.width
+                wnd.height = img.height
+                wnd.set_visible()
 
             for frameNumber in range(nFrames):
             #for frameNumber in range(0,10000,300):
@@ -74,18 +93,34 @@ def get_centers(filenames,showFrames=0):
                 cY = numpy.sum(numpy.sum(threshFrame,1)*Y)/numpy.sum(threshFrame)
                 
                 if showFrames and numpy.mod(frameNumber,100) == 0:
+                    if wnd.has_exit:
+                        break
                     #pylab.imshow(threshFrame)
-                    pylab.imshow(ROIFrame)
-                    pylab.hold(True)
-                    pylab.scatter(cX,cY)
-                    pylab.title('frame '+str(frameNumber)+' of '+str(nFrames))
-                    pylab.draw()
-                    pylab.hold(False)
+                    #pylab.scatter(cX,cY)
+                    #pylab.title('frame '+str(frameNumber)+' of '+str(nFrames))
+
+                    wnd.dispatch_events()
+                    dispFrame = convert(ROIFrame,fmf.format)
+                    dispFrame[round(cY),round(cX)] = 0
+                    #dispFrame = threshFrame.astype(numpy.uint8)*155 +100
+                    #dispFrame[round(cY),round(cX)] = 0
+                    if COLOR == True:
+                        dispFrame = numpy.array([dispFrame,dispFrame,dispFrame])
+                        dispFrame = numpy.swapaxes(dispFrame,0,2)
+                        dispFrame = numpy.swapaxes(dispFrame,0,1)
+                        dispFrame[round(cY),round(cX),0] = 255
+
+                    dispFrame = numpy.repeat(dispFrame,ZOOM,axis=0)
+                    dispFrame = numpy.repeat(dispFrame,ZOOM,axis=1)
+                    aii.view_new_array(dispFrame)
+                    img.blit(0, 0, 0)
+                    wnd.flip()
 
                 cents.append((cX,cY,timestamp))
 
     centers = numpy.rec.fromarrays(numpy.transpose(cents), [('x',numpy.float),('y',numpy.float),('t',numpy.float)])
     if showFrames:
+        wnd.close()
         pylab.figure()
         pylab.scatter(centers.x,centers.y)
         pylab.draw()
