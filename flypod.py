@@ -48,6 +48,7 @@ def get_centers(filenames,showFrames=0):
     
     COLOR = False
     ZOOM = 10
+    FRAMESTEP = 100
     
     cents = []
 
@@ -74,10 +75,10 @@ def get_centers(filenames,showFrames=0):
                 img = aii.texture
                 wnd.width = img.width
                 wnd.height = img.height
+                wnd.set_caption(filename)
                 wnd.set_visible()
 
             for frameNumber in range(nFrames):
-            #for frameNumber in range(0,10000,300):
                 frame,timestamp = fmf.get_frame(frameNumber)
                 
                 ROIFrame = frame[top:-bottom,left:-right]
@@ -92,29 +93,29 @@ def get_centers(filenames,showFrames=0):
                 cX = numpy.sum(numpy.sum(threshFrame,0)*X)/numpy.sum(threshFrame)
                 cY = numpy.sum(numpy.sum(threshFrame,1)*Y)/numpy.sum(threshFrame)
                 
-                if showFrames and numpy.mod(frameNumber,100) == 0:
-                    if wnd.has_exit:
-                        break
-                    #pylab.imshow(threshFrame)
-                    #pylab.scatter(cX,cY)
-                    #pylab.title('frame '+str(frameNumber)+' of '+str(nFrames))
+                if numpy.mod(frameNumber,FRAMESTEP) == 0:
+                    sys.stdout.write('\b'*(len(str(frameNumber-FRAMESTEP))+4+len(str(nFrames)))+str(frameNumber)+' of '+ str(nFrames))
+                    sys.stdout.flush()
+                    if showFrames:
+                        if wnd.has_exit:
+                            break
 
-                    wnd.dispatch_events()
-                    dispFrame = convert(ROIFrame,fmf.format)
-                    dispFrame[round(cY),round(cX)] = 0
-                    #dispFrame = threshFrame.astype(numpy.uint8)*155 +100
-                    #dispFrame[round(cY),round(cX)] = 0
-                    if COLOR == True:
-                        dispFrame = numpy.array([dispFrame,dispFrame,dispFrame])
-                        dispFrame = numpy.swapaxes(dispFrame,0,2)
-                        dispFrame = numpy.swapaxes(dispFrame,0,1)
-                        dispFrame[round(cY),round(cX),0] = 255
+                        wnd.dispatch_events()
+                        dispFrame = convert(ROIFrame,fmf.format)
+                        dispFrame[round(cY),round(cX)] = 0
+                        #dispFrame = threshFrame.astype(numpy.uint8)*155 +100
+                        #dispFrame[round(cY),round(cX)] = 0
+                        if COLOR == True:
+                            dispFrame = numpy.array([dispFrame,dispFrame,dispFrame])
+                            dispFrame = numpy.swapaxes(dispFrame,0,2)
+                            dispFrame = numpy.swapaxes(dispFrame,0,1)
+                            dispFrame[round(cY),round(cX),0] = 255
 
-                    dispFrame = numpy.repeat(dispFrame,ZOOM,axis=0)
-                    dispFrame = numpy.repeat(dispFrame,ZOOM,axis=1)
-                    aii.view_new_array(dispFrame)
-                    img.blit(0, 0, 0)
-                    wnd.flip()
+                        dispFrame = numpy.repeat(dispFrame,ZOOM,axis=0)
+                        dispFrame = numpy.repeat(dispFrame,ZOOM,axis=1)
+                        aii.view_new_array(dispFrame)
+                        img.blit(0, 0, 0)
+                        wnd.flip()
 
                 cents.append((cX,cY,timestamp))
 
