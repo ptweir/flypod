@@ -18,6 +18,7 @@ import os
 pylab.ion()
 
 def convert(frame,format):
+    """ covert frame format """ 
     if format in ['RGB8','ARGB8','YUV411','YUV422']:
         frame = imops.to_rgb8(format,frame)
     elif format in ['MONO8','MONO16']:
@@ -51,7 +52,7 @@ def get_centers(filenames,showFrames=0):
     FRAMESTEP = 100
     
     cents = []
-
+    oldFrameNumber = 0
     for f,filename in enumerate(filenames):
         if filename[-3:] == 'fmf':
         
@@ -94,7 +95,8 @@ def get_centers(filenames,showFrames=0):
                 cY = numpy.sum(numpy.sum(threshFrame,1)*Y)/numpy.sum(threshFrame)
                 
                 if numpy.mod(frameNumber,FRAMESTEP) == 0:
-                    sys.stdout.write('\b'*(len(str(frameNumber-FRAMESTEP))+4+len(str(nFrames)))+str(frameNumber)+' of '+ str(nFrames))
+                    sys.stdout.write('\b'*(len(str(oldFrameNumber))+4+len(str(nFrames)))+str(frameNumber)+' of '+ str(nFrames))
+                    oldFrameNumber = frameNumber
                     sys.stdout.flush()
                     if showFrames:
                         if wnd.has_exit:
@@ -102,7 +104,6 @@ def get_centers(filenames,showFrames=0):
 
                         wnd.dispatch_events()
                         dispFrame = convert(ROIFrame,fmf.format)
-                        dispFrame[round(cY),round(cX)] = 0
                         #dispFrame = threshFrame.astype(numpy.uint8)*155 +100
                         #dispFrame[round(cY),round(cX)] = 0
                         if COLOR == True:
@@ -187,8 +188,23 @@ def analyze_directory(dirName):
     analyze_directory('/home/cardini/2/')
     """ 
     filenames = os.listdir(dirName)
-    c = get_centers([os.path.join(dirName,f) for f in filenames],0)
-    cx, cy, r = circle_fit(c.x,c.y)
+    circleFileExists = False
+    for f, filename in enumerate(filenames):
+        if filename == 'circle.txt':
+            fd = open(dirName+filename)
+            line = fd.readline()
+            sline = line.split()
+            cx,cy,r = [float(i) for i in sline]
+            circleFileExists = True
+    if not circleFileExists:
+        c = get_centers([os.path.join(dirName,f) for f in filenames],0)
+        cx, cy, r = circle_fit(c.x,c.y)
+        fd = open(dirName+'circle.txt',mode='w')
+        fd.write('%f %f %f'%(cx,cy,r))
+        fd.flush()
+        fd.close()
+
+
     spnum = -1
     fig1 = pylab.figure()
     fig2 = pylab.figure()
