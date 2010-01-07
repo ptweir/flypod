@@ -210,7 +210,6 @@ def analyze_directory(dirName):
         fd.flush()
         fd.close()
 
-
     spnum = -1
     fig1 = pylab.figure()
     fig2 = pylab.figure()
