@@ -314,5 +314,3 @@ def check_orientations(fileName,orientations,cx,cy,frameStep=100):
 
 
 
-
-
