@@ -1,6 +1,6 @@
 """module to analyze magnetic tether outdoor experiments
 
-PTW 12/10/2009
+PTW
 """
 
 from __future__ import division
@@ -10,7 +10,7 @@ import motmot.imops.imops as imops
 from pyglet import window
 import sys
 import matplotlib
-matplotlib.use('tkagg')
+#matplotlib.use('tkagg')
 import pylab
 import numpy
 import os
@@ -44,12 +44,12 @@ def get_centers(filenames,showFrames=0):
         
     top = 25
     bottom = 25
-    left = 20
-    right =  30
+    left = 25
+    right =  25
     
-    COLOR = False
+    COLOR = True
     ZOOM = 10
-    FRAMESTEP = 100
+    FRAMESTEP = 1
     
     cents = []
     oldFrameNumber = 0
@@ -105,12 +105,14 @@ def get_centers(filenames,showFrames=0):
                         wnd.dispatch_events()
                         dispFrame = convert(ROIFrame,fmf.format)
                         #dispFrame = threshFrame.astype(numpy.uint8)*155 +100
-                        #dispFrame[round(cY),round(cX)] = 0
+                        if ~numpy.isnan(cY) and ~numpy.isnan(cY):
+                            dispFrame[round(cY),round(cX)] = 0
                         if COLOR == True:
                             dispFrame = numpy.array([dispFrame,dispFrame,dispFrame])
                             dispFrame = numpy.swapaxes(dispFrame,0,2)
                             dispFrame = numpy.swapaxes(dispFrame,0,1)
-                            dispFrame[round(cY),round(cX),0] = 255
+                            if ~numpy.isnan(cY) and ~numpy.isnan(cY):
+                                dispFrame[round(cY),round(cX),0] = 255
 
                         dispFrame = numpy.repeat(dispFrame,ZOOM,axis=0)
                         dispFrame = numpy.repeat(dispFrame,ZOOM,axis=1)
@@ -119,10 +121,11 @@ def get_centers(filenames,showFrames=0):
                         wnd.flip()
 
                 cents.append((cX,cY,timestamp))
+        if showFrames:
+            wnd.close()
 
     centers = numpy.rec.fromarrays(numpy.transpose(cents), [('x',numpy.float),('y',numpy.float),('t',numpy.float)])
     if showFrames:
-        wnd.close()
         pylab.figure()
         pylab.scatter(centers.x,centers.y)
         pylab.draw()
@@ -153,7 +156,7 @@ def circle_fit(dataX,dataY):
     return circCenterX, circCenterY, circR
 
 def rose(data,wrapPoint=360,includeData=1,ax='current'):
-    """makes polar histogram plot, returns wrapped data, n, bins, binCenters
+    """makes polar histogram plot, returns wrapped data, n, bins, binCenters, axes
     
     arguments:      
     data            numpy array containing data
@@ -161,8 +164,9 @@ def rose(data,wrapPoint=360,includeData=1,ax='current'):
     include data    TO ADD
     
     example:
-    orw,n,b,bc = rose(orientations)
+    orw,n,b,bc,ax = rose(orientations)
     """ 
+    NUMBINS = 10
     if ax == 'current':
         ax = pylab.gca()
         
@@ -170,13 +174,14 @@ def rose(data,wrapPoint=360,includeData=1,ax='current'):
         ax = pylab.subplot(111,polar=True)
 
     wrappedData = numpy.mod(data,wrapPoint)*2*numpy.pi/wrapPoint
-    n, bins, patches = pylab.hist(wrappedData)
+    n, bins, patches = pylab.hist(wrappedData,NUMBINS)
     binCenters = bins[:-1] + (bins[1:] - bins[:-1])/2
     n = numpy.append(n,n[0])
     binCenters = numpy.append(binCenters,binCenters[0])
+    binCenters = -binCenters + numpy.pi/2 #this makes 0 straight up, with angles increasing clockwise
     pylab.cla()
     pylab.plot(binCenters,n)
-    return wrappedData, n, bins, binCenters
+    return wrappedData, n, bins, binCenters, ax
 
 def analyze_directory(dirName):
     """runs analyzes .fmf files in dirName and creates plots
@@ -188,18 +193,19 @@ def analyze_directory(dirName):
     analyze_directory('/home/cardini/2/')
     """ 
     filenames = os.listdir(dirName)
+    flyFilenames = [f for f in filenames if f[:3] == 'fly']
     circleFileExists = False
     for f, filename in enumerate(filenames):
         if filename == 'circle.txt':
-            fd = open(dirName+filename)
+            fd = open(os.path.join(dirName,filename))
             line = fd.readline()
             sline = line.split()
             cx,cy,r = [float(i) for i in sline]
             circleFileExists = True
     if not circleFileExists:
-        c = get_centers([os.path.join(dirName,f) for f in filenames],0)
-        cx, cy, r = circle_fit(c.x,c.y)
-        fd = open(dirName+'circle.txt',mode='w')
+        c = get_centers([os.path.join(dirName,f) for f in flyFilenames],0)
+        cx, cy, r = circle_fit(c.x[~numpy.isnan(c.x)],c.y[~numpy.isnan(c.y)])
+        fd = open(os.path.join(dirName,'circle.txt'),mode='w')
         fd.write('%f %f %f'%(cx,cy,r))
         fd.flush()
         fd.close()
@@ -209,7 +215,7 @@ def analyze_directory(dirName):
     fig1 = pylab.figure()
     fig2 = pylab.figure()
     fig3 = pylab.figure()
-    for f, filename in enumerate(filenames):
+    for f, filename in enumerate(flyFilenames):
         csvFilename = filename[:-3]+'csv'
         csvFileExists = False
         if filename[-3:] == 'fmf':
@@ -219,32 +225,47 @@ def analyze_directory(dirName):
                     csvFileExists = True
                     
             if csvFileExists:
-                centers = pylab.csv2rec(dirName+csvFilename)
+                centers = pylab.csv2rec(os.path.join(dirName,csvFilename))
             else:
-                centers = get_centers(dirName+filename,0)
-                pylab.rec2csv(centers,dirName+csvFilename)
+                centers = get_centers(os.path.join(dirName,filename),0)
+                pylab.rec2csv(centers,os.path.join(dirName,csvFilename))
                 
             #cx, cy, r = circle_fit(centers['x'],centers['y'])
-            orientations = numpy.arctan2(centers['x']-cx,centers['y']-cy)*180/numpy.pi
+            
+            orientations = numpy.arctan2(centers.x[~numpy.isnan(centers.x)]-cx,centers.y[~numpy.isnan(centers.y)]-cy)*180/numpy.pi
+            #these orientations are measured from 12 O'clock, increasing clockwise
+            
+            trueUpDirection = filename[3]
+            if trueUpDirection == 'E':
+                orientations = orientations+90
+            elif trueUpDirection == 'S':
+                orientations = orientations+180
+            elif trueUpDirection == 'W':
+                orientations = orientations+270
             
             pylab.figure(fig1.number)
             pylab.subplot(221+spnum)
-            pylab.plot(centers['x'],centers['y'])
+            pylab.plot(centers.x,centers.y)
             pylab.hold(True)
             th = range(0,700)
             th = numpy.array(th)/100.0
             pylab.plot(r*numpy.cos(th)+cx,r*numpy.sin(th)+cy)
             pylab.hold(False)
+            pylab.title(filename)
             pylab.draw()
             
             pylab.figure(fig2.number)
             pylab.subplot(221+spnum)
             pylab.hist(orientations)
+            pylab.title(filename)
             pylab.draw()
             
             pylab.figure(fig3.number)
             pylab.subplot(221+spnum,polar=True)
-            orw,n,b,bc = rose(orientations,360,1)
+            orw,n,b,bc,ax = rose(orientations,360,1)
+            ax.set_rgrids([1],'')
+            ax.set_thetagrids([0,90,180,270],['E','N','W','S'])
+            pylab.title(filename)
             pylab.draw()  
     return
 
