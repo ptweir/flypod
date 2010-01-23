@@ -155,13 +155,13 @@ def circle_fit(dataX,dataY):
     circR  =  ((out[0]**2+out[1]**2)/4-out[2])**.5;
     return circCenterX, circCenterY, circR
 
-def rose(data,wrapPoint=360,includeData=1,ax='current'):
+def rose(data,wrapPoint=360,ax='current'):
     """makes polar histogram plot, returns wrapped data, n, bins, binCenters, axes
     
     arguments:      
     data            numpy array containing data
     wrap point      scalar value at which data is wrapped [default 360]
-    include data    TO ADD
+    ax              axes to plot in [default current]
     
     example:
     orw,n,b,bc,ax = rose(orientations)
@@ -261,7 +261,7 @@ def analyze_directory(dirName):
             
             pylab.figure(fig3.number)
             pylab.subplot(221+spnum,polar=True)
-            orw,n,b,bc,ax = rose(orientations,360,1)
+            orw,n,b,bc,ax = rose(orientations,360)
             ax.set_rgrids([1],'')
             ax.set_thetagrids([0,90,180,270],['E','N','W','S'])
             pylab.title(filename)
@@ -285,6 +285,7 @@ def check_orientations(fileName,orientations,cx,cy,frameStep=100):
     fmf = FMF.FlyMovie(fileName)
  
     ax = pylab.axes()
+    pylab.gray()
 
     top = 25
     bottom = 25
