@@ -37,6 +37,7 @@ def loop_cmap(cmap_name, num_loops=2, reflect=False, plot=False):
     R = np.empty((Nr*num_loops,3))
     G = np.empty((Ng*num_loops,3))
     B = np.empty((Nb*num_loops,3))
+    
     for n in range(num_loops):
         if reflect and np.mod(n,2)==1:
             R[n*Nr:(n+1)*Nr,0] = (n + 1 - r[::-1,0])/num_loops
