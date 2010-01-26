@@ -4,10 +4,8 @@ from pygarrayimage.arrayimage import ArrayInterfaceImage
 import motmot.imops.imops as imops
 from pyglet import window
 import sys
-import matplotlib
-#matplotlib.use('tkagg')
 import pylab
-import numpy
+import numpy as np
 import os
 
 def convert(frame,format):
@@ -22,15 +20,15 @@ def convert(frame,format):
         frame = imops.to_rgb8(format,frame)
     return frame
 
-def polarimetry(filenames,showFrames=0):
-    """get polarimetry data from fmf movies filenames
+def get_pixels(filenames,showFrames=0):
+    """get pixel value data from fmf movies filenames
     
     arguments:      
     filename        list of .fmf movie files or single .fmf movie file
     showFrames      0 [default] or 1
     
     example:
-    pol, time = polarimetry('/home/cardini/2/movie20091202_165430.fmf',0)
+    pol, time = get_pixels('/home/cardini/2/movie20091202_165430.fmf',0)
     """ 
     if isinstance(filenames,str):
         filenames = [filenames]
@@ -40,8 +38,9 @@ def polarimetry(filenames,showFrames=0):
     left = 350
     right = 300
     
-    ZOOM = 1
+    ZOOM = 10
     FRAMESTEP = 1
+    dnSmpRate = 5.0
     
     #pix = []
     oldFrameNumber = 0
@@ -55,15 +54,15 @@ def polarimetry(filenames,showFrames=0):
             #pix = []
             frame,timestamp = fmf.get_frame(0)
             ROIFrame = frame[top:-bottom,left:-right]
-            p = frame[::10,:10*numpy.floor(frame.shape[-1]/10.0):10]
+            p = frame[::dnSmpRate,:dnSmpRate*np.floor(frame.shape[-1]/dnSmpRate):dnSmpRate]
             
             if showFrames:
                 DnSmpFrame = p
                 #dispFrame = convert(ROIFrame,fmf.format)
                 dispFrame = convert(DnSmpFrame,fmf.format)
                 
-                dispFrame = numpy.repeat(dispFrame,ZOOM,axis=0)
-                dispFrame = numpy.repeat(dispFrame,ZOOM,axis=1)
+                dispFrame = np.repeat(dispFrame,ZOOM,axis=0)
+                dispFrame = np.repeat(dispFrame,ZOOM,axis=1)
                 wnd = window.Window(visible=False, resizable=True)
                 aii = ArrayInterfaceImage(dispFrame)
                 img = aii.texture
@@ -72,22 +71,22 @@ def polarimetry(filenames,showFrames=0):
                 wnd.set_caption(filename)
                 wnd.set_visible()
                 
-            pix = numpy.empty([p.shape[-2],p.shape[-1],nFrames])
-            pix.fill(numpy.nan)
-            time = numpy.empty(nFrames)
+            pix = np.empty([p.shape[-2],p.shape[-1],nFrames])
+            pix.fill(np.nan)
+            time = np.empty(nFrames)
             
             for frameNumber in range(nFrames):
                 frame,timestamp = fmf.get_frame(frameNumber)
                 
                 ROIFrame = frame[top:-bottom,left:-right]
                 
-                DnSmpFrame = numpy.empty([p.shape[-2],p.shape[-1],10])
-                for d in range(10):
-                    DnSmpFrame[:,:,d] = frame[d::10,d:10*numpy.floor(frame.shape[-1]/10.0):10]
+                DnSmpFrame = np.empty([p.shape[-2],p.shape[-1],dnSmpRate])
+                for d in range(dnSmpRate):
+                    DnSmpFrame[:,:,d] = frame[d::dnSmpRate,d:dnSmpRate*np.floor(frame.shape[-1]/dnSmpRate):dnSmpRate]
                     
-                p = numpy.mean(DnSmpFrame,axis=2)
+                p = np.mean(DnSmpFrame,axis=2)
                 
-                if numpy.mod(frameNumber,FRAMESTEP) == 0:
+                if np.mod(frameNumber,FRAMESTEP) == 0:
                     sys.stdout.write('\b'*(len(str(oldFrameNumber))+4+len(str(nFrames)))+str(frameNumber)+' of '+ str(nFrames))
                     oldFrameNumber = frameNumber
                     sys.stdout.flush()
@@ -97,11 +96,11 @@ def polarimetry(filenames,showFrames=0):
 
                         wnd.dispatch_events()
                         #dispFrame = convert(ROIFrame,fmf.format)
-                        dispFrame = p.astype(numpy.uint8)
+                        dispFrame = p.astype(np.uint8)
                         #dispFrame = convert(DnSmpFrame,fmf.format)
 
-                        dispFrame = numpy.repeat(dispFrame,ZOOM,axis=0)
-                        dispFrame = numpy.repeat(dispFrame,ZOOM,axis=1)
+                        dispFrame = np.repeat(dispFrame,ZOOM,axis=0)
+                        dispFrame = np.repeat(dispFrame,ZOOM,axis=1)
                         aii.view_new_array(dispFrame)
                         img.blit(0, 0, 0)
                         wnd.flip()
@@ -112,7 +111,57 @@ def polarimetry(filenames,showFrames=0):
                 
         if showFrames:
             wnd.close()
-    pixel = pix
+    pixels = pix
 
-    return pixel, time
+    return pixels, time
+
+def do_polarimetry(pixels,time=None):
+
+    data = pixels
+    if time is None:
+        t = arange(data.shape[-1])
+    else:
+        t = time
+    d = np.median(np.diff(time))
+
+    N=None
+    sp = np.fft.fft(data,N)
+    rsp = np.fft.rfft(data,N)
+    fp = np.fft.fftfreq(sp.shape[-1],d)
+    #fp = np.fft.fftfreq(data.shape[-1],d)
+    fpp = fp[fp>=0]
+    freq = np.empty(rsp.shape[-1])
+    freq[:fpp.shape[-1]] = fpp
+    if fp.shape[-1] != rsp.shape[-1]:
+        freq[-1] = -np.min(fp)
+
+
+    amp = np.abs(rsp)
+    pwr = amp**2
+    phs = np.angle(rsp) # something is wrong here
+    #phs = np.arctan2(rsp.real,rsp.imag)
+
+    ind = np.argmax(pwr*(freq!=0),axis=2)
+    #m = pwr[ind]
+
+    pw = np.empty(ind.shape)
+    ph = np.empty(ind.shape)
+
+    for r in range(pwr.shape[-3]):
+        for c in range(pwr.shape[-2]):
+            #plot(freq, pwr[r,c,:])#,[fp[ind], fp[ind]],[0,np.sqrt(m[r,c])])
+            pw[r,c] = pwr[r,c,ind[r,c]]
+            ph[r,c] = phs[r,c,ind[r,c]]
+
+    s = np.sum(pwr,axis=2)
+    i = np.median(ind)
+    pylab.figure()
+    pylab.imshow(pwr[:,:,i]/s)
+    #pylab.imshow(p/s)
+    pylab.show()
+
+    pylab.figure()
+    #pylab.imshow(ph)
+    pylab.imshow(phs[:,:,i])
+    pylab.show()
 
