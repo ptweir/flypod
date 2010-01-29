@@ -22,8 +22,13 @@ def loop_cmap(cmap_name, num_loops=2, reflect=False, plot=False):
     '''
     if type(cmap_name) is str:
         cmap = eval('_cm._%s_data' % cmap_name)
+        cmap_str = cmap_name
     else:
-        cmap = eval('_cm._%s_data' % cmap_name.name)
+        try:    
+            cmap = eval('_cm._%s_data' % cmap_name.name)
+        except AttributeError:
+            cmap = cmap_name._segmentdata
+        cmap_str = cmap_name.name
         
     num_loops = round(num_loops)
     LUTSIZE = plt.rcParams['image.lut']
@@ -57,7 +62,7 @@ def loop_cmap(cmap_name, num_loops=2, reflect=False, plot=False):
                 'green': tuple(map(tuple,G)),
                 'blue':  tuple(map(tuple,B))
                }
-    my_cmap = colors.LinearSegmentedColormap('my_hsv', _my_data,  LUTSIZE)
+    my_cmap = colors.LinearSegmentedColormap('my_'+cmap_str, _my_data,  LUTSIZE)
 
     if plot:
         plt.figure()
@@ -75,8 +80,13 @@ def reflect_cmap(cmap_name, plot=False):
     '''
     if type(cmap_name) is str:
         cmap = eval('_cm._%s_data' % cmap_name)
+        cmap_str = cmap_name
     else:
-        cmap = eval('_cm._%s_data' % cmap_name.name)
+        try:    
+            cmap = eval('_cm._%s_data' % cmap_name.name)
+        except AttributeError:
+            cmap = cmap_name._segmentdata
+        cmap_str = cmap_name.name
         
     LUTSIZE = plt.rcParams['image.lut']
     r = np.array(cmap['red'])
@@ -109,7 +119,7 @@ def reflect_cmap(cmap_name, plot=False):
                 'green': tuple(map(tuple,G)),
                 'blue':  tuple(map(tuple,B))
                }
-    my_cmap = colors.LinearSegmentedColormap('my_hsv', _my_data,  LUTSIZE)
+    my_cmap = colors.LinearSegmentedColormap('my_'+cmap_str, _my_data,  LUTSIZE)
 
     if plot:
         plt.figure()
@@ -118,32 +128,39 @@ def reflect_cmap(cmap_name, plot=False):
 
     return my_cmap
     
-def rescale_cmap(cmap_name, low=0.0, high=1.0, plot=False):
+def rescale_cmap(cmap_name, rLow=0.0, rHigh=1.0, gLow=0.0, gHigh=1.0, bLow=0.0, bHigh=1.0, plot=False):
     '''
     Example 1:
         my_hsv = rescale_cmap('hsv', low = 0.3)     # equivalent scaling  
                     to cplot_like(blah, l_bias=0.33, int_exponent=0.0)
     Example 2:
         my_hsv = rescale_cmap(cm.hsv, low = 0.3)
-    By Gary Ruben found at http://www.mail-archive.com/matplotlib-users@lists.sourceforge.net/msg14237.html
+    based on code by Gary Ruben found at http://www.mail-archive.com/matplotlib-users@lists.sourceforge.net/msg14237.html
     '''
     if type(cmap_name) is str:
         cmap = eval('_cm._%s_data' % cmap_name)
+        cmap_str = cmap_name
     else:
-        cmap = eval('_cm._%s_data' % cmap_name.name)
+        try:    
+            cmap = eval('_cm._%s_data' % cmap_name.name)
+        except AttributeError:
+            cmap = cmap_name._segmentdata
+        cmap_str = cmap_name.name
     LUTSIZE = plt.rcParams['image.lut']
     r = np.array(cmap['red'])
     g = np.array(cmap['green'])
     b = np.array(cmap['blue'])
-    range = high - low
-    r[:,1:] = r[:,1:]*range+low
-    g[:,1:] = g[:,1:]*range+low
-    b[:,1:] = b[:,1:]*range+low
+    rRange = rHigh - rLow
+    gRange = gHigh - gLow
+    bRange = bHigh - bLow
+    r[:,1:] = r[:,1:]*rRange+rLow
+    g[:,1:] = g[:,1:]*gRange+gLow
+    b[:,1:] = b[:,1:]*bRange+bLow
     _my_data = {'red':   tuple(map(tuple,r)),
                 'green': tuple(map(tuple,g)),
                 'blue':  tuple(map(tuple,b))
                }
-    my_cmap = colors.LinearSegmentedColormap('my_hsv', _my_data,  LUTSIZE)
+    my_cmap = colors.LinearSegmentedColormap('my_'+cmap_str, _my_data,  LUTSIZE)
 
     if plot:
         plt.figure()
