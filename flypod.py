@@ -37,7 +37,7 @@ def get_centers(filenames,showFrames=0):
     showFrames      0 [default] or 1
     
     example:
-    centers = get_centers('/home/cardini/2/movie20091202_165430.fmf',0)
+    centers = get_centers('/home/cardini/12/flyS20100201_171506.fmf',0)
     """ 
     if isinstance(filenames,str):
         filenames = [filenames]
@@ -52,7 +52,7 @@ def get_centers(filenames,showFrames=0):
     FRAMESTEP = 1
     
     cents = []
-    oldFrameNumber = 0
+    lenOutStr = 0
     for f,filename in enumerate(filenames):
         if filename[-3:] == 'fmf':
         
@@ -95,8 +95,9 @@ def get_centers(filenames,showFrames=0):
                 cY = numpy.sum(numpy.sum(threshFrame,1)*Y)/numpy.sum(threshFrame)
                 
                 if numpy.mod(frameNumber,FRAMESTEP) == 0:
-                    sys.stdout.write('\b'*(len(str(oldFrameNumber))+4+len(str(nFrames)))+str(frameNumber)+' of '+ str(nFrames))
-                    oldFrameNumber = frameNumber
+                    outStr = str(frameNumber)+' of '+ str(nFrames)
+                    sys.stdout.write("%s%s\r" % (outStr, " "*lenOutStr ))
+                    lenOutStr = len(outStr)
                     sys.stdout.flush()
                     if showFrames:
                         if wnd.has_exit:
@@ -229,7 +230,7 @@ def analyze_directory(dirName):
                 centers = get_centers(os.path.join(dirName,filename),0)
                 pylab.rec2csv(centers,os.path.join(dirName,csvFilename))
                 
-            #cx, cy, r = circle_fit(centers['x'],centers['y'])
+            cx, cy, r = circle_fit(centers.x,centers.y)
             
             orientations = numpy.arctan2(centers.x[~numpy.isnan(centers.x)]-cx,centers.y[~numpy.isnan(centers.y)]-cy)*180/numpy.pi
             #these orientations are measured from 12 O'clock, increasing clockwise
@@ -241,10 +242,12 @@ def analyze_directory(dirName):
                 orientations = orientations+180
             elif trueUpDirection == 'W':
                 orientations = orientations+270
+                
+            orientations = numpy.mod(orientations+180,360)-180
             
             pylab.figure(fig1.number)
             pylab.subplot(221+spnum)
-            pylab.plot(centers.x,centers.y)
+            pylab.scatter(centers.x,centers.y)
             pylab.hold(True)
             th = range(0,700)
             th = numpy.array(th)/100.0
