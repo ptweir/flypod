@@ -169,3 +169,46 @@ def rescale_cmap(cmap_name, rLow=0.0, rHigh=1.0, gLow=0.0, gHigh=1.0, bLow=0.0, 
 
     return my_cmap
 
+def get_cmap(cmap_name):
+    if cmap_name is 'gb180':
+        #180 degree rotationally symmetric colorblind-frienly colormap
+        mygbdata = {
+        'red' : ((0., 0., 0.), (1., 0., 0.)),
+        'green': ((0., 0., 0.), (0.25, 1., 1.), (.5, 1., 1.), (.75, 0., 0.), (1., 0., 0.)),
+        'blue' : ((0., 0., 0.), (0.25, 0., 0.), (.5, 1., 1.), (.75, 1., 1.), (1., 0., 0.))
+        }
+        mygb = colors.LinearSegmentedColormap('mygb', mygbdata)
+
+        cmap = loop_cmap(mygb)
+    elif cmap_name is 'hsv180':
+        #180 degree rotationally symmetric colorblind-frienly colormap
+        cmap = loop_cmap('hsv')
+
+    #my_hot = cmt.loop_cmap('hot',num_loops=2, reflect=True)
+    #my_gray = cmt.loop_cmap('gray',num_loops=2, reflect=False)
+    
+    return cmap
+    
+def add_colordisc(image,width=101):
+
+    height = width
+    R = np.floor(width/2)
+    y0=R
+    x0=R
+    
+    x = np.matrix(range(width))
+    y = np.transpose(np.matrix(range(height)))
+
+    X = np.array((0*y+1)*x - y0)
+    Y = np.array(y*(0*x+1) - x0)
+
+    angle = np.arctan2(Y,X) + np.pi/2
+    radius = np.sqrt(X**2 + Y**2)
+    
+    ring = (radius<R)
+    radius[~ring]=np.nan
+    radius[ring]=1
+    
+    image[:height,:width] = angle*radius
+    
+    return image
