@@ -1,121 +1,12 @@
-from __future__ import division
-import motmot.FlyMovieFormat.FlyMovieFormat as FMF
-from pygarrayimage.arrayimage import ArrayInterfaceImage
-import motmot.imops.imops as imops
-from pyglet import window
-import sys
-import pylab
 import numpy as np
-import os
+import motmot.FlyMovieFormat.FlyMovieFormat as FMF
+import colormapTools as cmt
+import pylab
+import sys
+import time
+import tables
 
-def convert(frame,format):
-    """ covert frame format """ 
-    if format in ['RGB8','ARGB8','YUV411','YUV422']:
-        frame = imops.to_rgb8(format,frame)
-    elif format in ['MONO8','MONO16']:
-        frame = imops.to_mono8(format,frame)
-    elif (format.startswith('MONO8:') or
-          format.startswith('MONO32f:')):
-        # bayer
-        frame = imops.to_rgb8(format,frame)
-    return frame
-
-def get_pixels(filenames,showFrames=0):
-    """get pixel value data from fmf movies filenames
-    
-    arguments:      
-    filename        list of .fmf movie files or single .fmf movie file
-    showFrames      0 [default] or 1
-    
-    example:
-    pol, time = get_pixels('/home/cardini/2/movie20091202_165430.fmf',0)
-    """ 
-    if isinstance(filenames,str):
-        filenames = [filenames]
-        
-    top = 250
-    bottom = 100
-    left = 350
-    right = 300
-    
-    ZOOM = 10
-    FRAMESTEP = 1
-    dnSmpRate = 5.0
-    
-    #pix = []
-    oldFrameNumber = 0
-    for f,filename in enumerate(filenames):
-        if filename[-3:] == 'fmf':
-        
-            fmf = FMF.FlyMovie(filename)
-
-            nFrames = fmf.get_n_frames()
-            
-            #pix = []
-            frame,timestamp = fmf.get_frame(0)
-            ROIFrame = frame[top:-bottom,left:-right]
-            p = frame[::dnSmpRate,:dnSmpRate*np.floor(frame.shape[-1]/dnSmpRate):dnSmpRate]
-            
-            if showFrames:
-                DnSmpFrame = p
-                #dispFrame = convert(ROIFrame,fmf.format)
-                dispFrame = convert(DnSmpFrame,fmf.format)
-                
-                dispFrame = np.repeat(dispFrame,ZOOM,axis=0)
-                dispFrame = np.repeat(dispFrame,ZOOM,axis=1)
-                wnd = window.Window(visible=False, resizable=True)
-                aii = ArrayInterfaceImage(dispFrame)
-                img = aii.texture
-                wnd.width = img.width
-                wnd.height = img.height
-                wnd.set_caption(filename)
-                wnd.set_visible()
-                
-            pix = np.empty([p.shape[-2],p.shape[-1],nFrames])
-            pix.fill(np.nan)
-            time = np.empty(nFrames)
-            
-            for frameNumber in range(nFrames):
-                frame,timestamp = fmf.get_frame(frameNumber)
-                
-                ROIFrame = frame[top:-bottom,left:-right]
-                
-                DnSmpFrame = np.empty([p.shape[-2],p.shape[-1],dnSmpRate])
-                for d in range(dnSmpRate):
-                    DnSmpFrame[:,:,d] = frame[d::dnSmpRate,d:dnSmpRate*np.floor(frame.shape[-1]/dnSmpRate):dnSmpRate]
-                    
-                p = np.mean(DnSmpFrame,axis=2)
-                
-                if np.mod(frameNumber,FRAMESTEP) == 0:
-                    sys.stdout.write('\b'*(len(str(oldFrameNumber))+4+len(str(nFrames)))+str(frameNumber)+' of '+ str(nFrames))
-                    oldFrameNumber = frameNumber
-                    sys.stdout.flush()
-                    if showFrames:
-                        if wnd.has_exit:
-                            break
-
-                        wnd.dispatch_events()
-                        #dispFrame = convert(ROIFrame,fmf.format)
-                        dispFrame = p.astype(np.uint8)
-                        #dispFrame = convert(DnSmpFrame,fmf.format)
-
-                        dispFrame = np.repeat(dispFrame,ZOOM,axis=0)
-                        dispFrame = np.repeat(dispFrame,ZOOM,axis=1)
-                        aii.view_new_array(dispFrame)
-                        img.blit(0, 0, 0)
-                        wnd.flip()
-
-                #pix.append((p,timestamp))
-                pix[:,:,frameNumber] = p
-                time[frameNumber] = timestamp
-                
-        if showFrames:
-            wnd.close()
-    pixels = pix
-
-    return pixels, time
-
-def do_polarimetry(pixels,time=None):
+def do_fft(pixels,time=None):
 
     data = pixels
     if time is None:
@@ -124,10 +15,8 @@ def do_polarimetry(pixels,time=None):
         t = time
     d = np.median(np.diff(time))
 
-    N=None
-    sp = np.fft.fft(data,N)
-    rsp = np.fft.rfft(data,N)
-    fp = np.fft.fftfreq(sp.shape[-1],d)
+    rsp = np.fft.rfft(data)
+    fp = np.fft.fftfreq(data.shape[-1],d)
     #fp = np.fft.fftfreq(data.shape[-1],d)
     fpp = fp[fp>=0]
     freq = np.empty(rsp.shape[-1])
@@ -135,33 +24,163 @@ def do_polarimetry(pixels,time=None):
     if fp.shape[-1] != rsp.shape[-1]:
         freq[-1] = -np.min(fp)
 
-
     amp = np.abs(rsp)
     pwr = amp**2
     phs = np.angle(rsp) # something is wrong here
     #phs = np.arctan2(rsp.real,rsp.imag)
 
     ind = np.argmax(pwr*(freq!=0),axis=2)
-    #m = pwr[ind]
-
-    pw = np.empty(ind.shape)
-    ph = np.empty(ind.shape)
-
-    for r in range(pwr.shape[-3]):
-        for c in range(pwr.shape[-2]):
-            #plot(freq, pwr[r,c,:])#,[fp[ind], fp[ind]],[0,np.sqrt(m[r,c])])
-            pw[r,c] = pwr[r,c,ind[r,c]]
-            ph[r,c] = phs[r,c,ind[r,c]]
-
-    s = np.sum(pwr,axis=2)
     i = np.median(ind)
-    pylab.figure()
-    pylab.imshow(pwr[:,:,i]/s)
-    #pylab.imshow(p/s)
-    pylab.show()
+    
+    s = np.sum(pwr,axis=2)
+    
+    power = pwr[:,:,i]/s
+    phase = phs[:,:,i]
+    
+    return power, phase
 
-    pylab.figure()
-    #pylab.imshow(ph)
-    pylab.imshow(phs[:,:,i])
-    pylab.show()
+def do_polarimetry(filename,nFrames=100):
 
+    fmf = FMF.FlyMovie(filename)
+
+    if fmf.get_n_frames() < nFrames:
+        nFrames = fmf.get_n_frames()
+        print filename + " only has " + str(nFrames) + " frames"
+
+    frame,timestamp = fmf.get_frame(0)
+
+    N = 3
+    Nx = N
+    Ny = N
+    LEFT = 100
+    RIGHT = 600
+    TOP = 0
+    BOTTOM = frame.shape[-2]
+
+    #X = np.round(np.linspace(0,frame.shape[-1],Nx+1))
+    X = np.round(np.linspace(LEFT,RIGHT,Nx+1))
+    Y = np.round(np.linspace(TOP,BOTTOM,Ny+1))
+
+    power = np.empty(frame.shape)
+    power.fill(np.nan)
+    phase = np.empty(frame.shape)
+    phase.fill(np.nan)
+    intensity = np.empty(frame.shape)
+    intensity.fill(np.nan)
+
+    for i,x in enumerate(X[:-1]):
+    #for i,x in enumerate(X[:2]):
+        sys.stdout.write('i='+str(i)+'\n')
+        sys.stdout.flush()
+        for j,y in enumerate(Y[:-1]):
+        #for j,y in enumerate(Y[:2]):
+            sys.stdout.write('j='+str(j)+'\n')
+            sys.stdout.flush()
+            ROIFrames = np.empty([Y[j+1]-y,X[i+1]-x,nFrames])
+            timestamps = np.empty(nFrames)
+            for frameNumber in range(nFrames):
+                frame,timestamps[frameNumber] = fmf.get_frame(frameNumber)
+                ROIFrames[:,:,frameNumber] = frame[y:Y[j+1],x:X[i+1]]
+                
+            power[y:Y[j+1],x:X[i+1]], phase[y:Y[j+1],x:X[i+1]] = do_fft(ROIFrames,timestamps)
+            intensity[y:Y[j+1],x:X[i+1]] = np.mean(ROIFrames,axis = 2)
+            
+    #polarimetry = np.rec.fromarrays([power,phase,intensity],names='power,phase,intensity')
+    return power, phase, intensity
+
+def analyze_directory(dirName):
+    filenames = os.listdir(dirName)
+    skyFilenames = [f for f in filenames if f[:3] == 'sky']
+
+    spnum = -1
+    fig1 = pylab.figure()
+    fig2 = pylab.figure()
+    fig3 = pylab.figure()
+    for f, filename in enumerate(skyFilenames):
+        h5Filename = filename[:-3]+'h5'
+        h5FileExists = False
+        if filename[-3:] == 'fmf':
+            spnum = spnum+1
+            for fname in filenames:
+                if fname == h5Filename:
+                    h5FileExists = True
+                    
+            if h5FileExists:
+                "reading polarimetry from "+os.path.join(dirName,h5Filename)
+                h5File = tables.openFile(os.path.join(dirName,h5Filename),'r')
+                power = h5File.getNode("/power").read()
+                phase = h5File.getNode("/phase").read()
+                intensity = h5File.getNode("/intensity").read()
+            else:
+                print "doing polarimetry on "+os.path.join(dirName,filename)
+                power, phase, intensity = do_polarimetry(os.path.join(dirName,filename))
+                h5File = tables.openFile(os.path.join(dirName,h5Filename), mode = "w", title = h5Filename + "pol data")
+                h5File.createArray(h5File.root,"power",power)
+                h5File.createArray(h5File.root,"phase",phase)
+                h5File.createArray(h5File.root,"intensity",intensity)
+                h5File.close()
+                
+            phase = phase - np.mean(phase[222:261,338:382])
+            phase = cmt.add_colordisc(phase)
+            
+            #trueUpDirection = filename[3]
+            #if trueUpDirection == 'E':
+            #    phase = phase+np.pi/2
+            #elif trueUpDirection == 'S':
+            #    phase = phase+np.pi
+            #elif trueUpDirection == 'W':
+            #    phase = phase+3*np.pi/2
+            
+            phase = np.mod(phase,2*np.pi)
+            
+            pylab.figure(fig1.number)
+            ax = pylab.subplot(221+spnum)
+            pylab.imshow(intensity,cmap='gray')
+            pylab.title(filename)
+            ax.set_xticklabels([])
+            ax.set_yticklabels([])
+            pylab.show()
+            
+            pylab.figure(fig2.number)
+            ax = pylab.subplot(221+spnum)
+            pylab.imshow(power,cmap='jet')
+            pylab.colorbar()
+            pylab.title(filename)
+            ax.set_xticklabels([])
+            ax.set_yticklabels([])
+            pylab.show()
+            
+            gb180 = cmt.get_cmap('gb180')
+            pylab.figure(fig3.number)
+            ax = pylab.subplot(221+spnum)
+            pylab.imshow(phase,cmap=gb180)
+            pylab.title(filename)
+            ax.set_xticklabels([])
+            ax.set_yticklabels([])
+            pylab.show()  
+    return
+
+dirName = '/home/cardini/12/'
+analyze_directory(dirName)
+
+#filename = '/home/cardini/12/skyN20100201_173114.fmf'
+
+#power, phase, intensity = do_polarimetry(filename)
+#phase = phase - np.mean(phase[222:261,338:382])
+#phase = cmt.add_colordisc(phase)
+#phase = np.mod(phase,2*np.pi)
+
+#pylab.figure()
+#pylab.imshow(intensity,cmap='gray')
+#pylab.show()
+
+#pylab.figure()
+#pylab.imshow(power,cmap='jet')
+#pylab.colorbar()
+#pylab.show()
+
+#gb180 = cmt.get_cmap('gb180')
+
+#pylab.figure()
+#pylab.imshow(phase,cmap=gb180)
+#pylab.show()
