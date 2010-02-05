@@ -5,6 +5,58 @@ import pylab
 import sys
 import time
 import tables
+from scipy.stats.morestats import circmean
+from scipy.signal import sepfir2d, gaussian #, convolve2d
+
+def show_angle(angle,power):
+    ARROW_STEP = 40
+    kernel = np.ones((ARROW_STEP,ARROW_STEP))
+    rowFilter = gaussian(ARROW_STEP,ARROW_STEP/5)
+    colFilter = rowFilter
+    
+    gb180 = cmt.get_cmap('gb180')
+    
+    #X = np.arange(0,angle.shape(-1),ARROW_STEP)
+    #Y = np.arange(0,angle.shape(-2),ARROW_STEP)
+
+    x = np.matrix(np.arange(ARROW_STEP/2,angle.shape[-1],ARROW_STEP))
+    y = np.transpose(np.matrix(np.arange(ARROW_STEP/2,angle.shape[-2],ARROW_STEP)))
+
+    X = np.array((0*y+1)*x)
+    Y = np.array(y*(0*x+1))
+    
+    #u = convolve2d(sin(angle),kernel,mode='same')
+    #v = convolve2d(cos(angle),kernel,mode='same')
+    #p = convolve2d(power,kernel,mode='same')
+    
+    u = sepfir2d(sin(angle),rowFilter,colFilter)
+    v = sepfir2d(cos(angle),rowFilter,colFilter)
+    p = sepfir2d(power,rowFilter,colFilter)
+    
+    U = u[ARROW_STEP/2::ARROW_STEP,ARROW_STEP/2::ARROW_STEP]*p[ARROW_STEP/2::ARROW_STEP,ARROW_STEP/2::ARROW_STEP]
+    V = v[ARROW_STEP/2::ARROW_STEP,ARROW_STEP/2::ARROW_STEP]*p[ARROW_STEP/2::ARROW_STEP,ARROW_STEP/2::ARROW_STEP]
+    
+    #U = sin(angle[ARROW_STEP/2::ARROW_STEP,ARROW_STEP/2::ARROW_STEP])*(power[ARROW_STEP/2::ARROW_STEP,ARROW_STEP/2::ARROW_STEP])
+    #V = cos(angle[ARROW_STEP/2::ARROW_STEP,ARROW_STEP/2::ARROW_STEP])*(power[ARROW_STEP/2::ARROW_STEP,ARROW_STEP/2::ARROW_STEP])
+
+    #X = X[(power[::ARROW_STEP,::ARROW_STEP]>.016)]
+    #Y = Y[(power[::ARROW_STEP,::ARROW_STEP]>.016)]
+    #U = U[(power[::ARROW_STEP,::ARROW_STEP]>.016)]
+    #V = V[(power[::ARROW_STEP,::ARROW_STEP]>.016)]
+    
+    ua = ARROW_STEP/1.5*np.nansum(sin(angle)*power)/np.nansum(power)
+    va = -ARROW_STEP/1.5*np.nansum(cos(angle)*power)/np.nansum(power)
+    xc, yc = angle.shape[-1]/2, angle.shape[-2]/2
+    
+    pylab.imshow(angle,cmap=gb180)
+    #pylab.imshow(angle,cmap='hsv')
+    pylab.quiver(X,Y,U,V,pivot='middle',color='w',headwidth=1,headlength=0)
+    pylab.arrow(xc,yc,ua,va,color='w',linewidth=2)
+    pylab.arrow(xc,yc,-ua,-va,color='w',linewidth=2)
+    pylab.show()
+
+    A = np.arctan2(-ua,va)
+    return A
 
 def do_fft(pixels,time=None):
 
@@ -17,7 +69,6 @@ def do_fft(pixels,time=None):
 
     rsp = np.fft.rfft(data)
     fp = np.fft.fftfreq(data.shape[-1],d)
-    #fp = np.fft.fftfreq(data.shape[-1],d)
     fpp = fp[fp>=0]
     freq = np.empty(rsp.shape[-1])
     freq[:fpp.shape[-1]] = fpp
@@ -31,6 +82,7 @@ def do_fft(pixels,time=None):
 
     ind = np.argmax(pwr*(freq!=0),axis=2)
     i = np.median(ind)
+    print freq[i]
     
     s = np.sum(pwr,axis=2)
     
@@ -39,7 +91,7 @@ def do_fft(pixels,time=None):
     
     return power, phase
 
-def do_polarimetry(filename,nFrames=100):
+def do_polarimetry(filename,nFrames=200):
 
     fmf = FMF.FlyMovie(filename)
 
@@ -52,7 +104,7 @@ def do_polarimetry(filename,nFrames=100):
     N = 3
     Nx = N
     Ny = N
-    LEFT = 100
+    LEFT = 120
     RIGHT = 600
     TOP = 0
     BOTTOM = frame.shape[-2]
@@ -85,6 +137,9 @@ def do_polarimetry(filename,nFrames=100):
             power[y:Y[j+1],x:X[i+1]], phase[y:Y[j+1],x:X[i+1]] = do_fft(ROIFrames,timestamps)
             intensity[y:Y[j+1],x:X[i+1]] = np.mean(ROIFrames,axis = 2)
             
+    power = power[Y[0]:Y[-1],X[0]:X[-1]] # not checked
+    phase = phase[Y[0]:Y[-1],X[0]:X[-1]]
+    intensity = intensity[Y[0]:Y[-1],X[0]:X[-1]]
     #polarimetry = np.rec.fromarrays([power,phase,intensity],names='power,phase,intensity')
     return power, phase, intensity
 
@@ -106,7 +161,7 @@ def analyze_directory(dirName):
                     h5FileExists = True
                     
             if h5FileExists:
-                "reading polarimetry from "+os.path.join(dirName,h5Filename)
+                print "reading polarimetry from "+os.path.join(dirName,h5Filename)
                 h5File = tables.openFile(os.path.join(dirName,h5Filename),'r')
                 power = h5File.getNode("/power").read()
                 phase = h5File.getNode("/phase").read()
@@ -119,19 +174,35 @@ def analyze_directory(dirName):
                 h5File.createArray(h5File.root,"phase",phase)
                 h5File.createArray(h5File.root,"intensity",intensity)
                 h5File.close()
-                
-            phase = phase - np.mean(phase[222:261,338:382])
-            phase = cmt.add_colordisc(phase)
+                            
+            phase = phase - circmean(np.ravel(phase[222:261,222:272]),high=np.pi,low=-np.pi)
             
-            #trueUpDirection = filename[3]
-            #if trueUpDirection == 'E':
-            #    phase = phase+np.pi/2
-            #elif trueUpDirection == 'S':
-            #    phase = phase+np.pi
-            #elif trueUpDirection == 'W':
-            #    phase = phase+3*np.pi/2
+            angle = phase/2.0 # because phase offset of intensity values is twice angle between overlapping polarizers
             
-            phase = np.mod(phase,2*np.pi)
+            trueUpDirection = filename[3]
+            if trueUpDirection == 'E':
+                power = np.rot90(power,1)
+                angle = np.rot90(angle,1)
+                intensity = np.rot90(intensity,1)
+                angle = angle + np.pi/2
+            elif trueUpDirection == 'S':
+                power = np.rot90(power,2)
+                angle = np.rot90(angle,2)
+                intensity = np.rot90(intensity,2)
+                angle = angle + np.pi
+            elif trueUpDirection == 'W':
+                power = np.rot90(power,3)
+                angle = np.rot90(angle,3)
+                intensity = np.rot90(intensity,3)
+                angle = angle + 3*np.pi/2
+
+            mask = intensity>(np.mean(intensity)-.45*np.std(intensity)) #hack
+            #mask[100:300,100:300] = True not sure if central dot (polarizer) should be in or not... if so - threshold should be ~1 std below mean intensity
+            power[~mask] = nan
+            angle[~mask] = nan
+            
+            angle = cmt.add_colordisc(angle,width=71)
+            angle = np.mod(angle+np.pi,2*np.pi)-np.pi
             
             pylab.figure(fig1.number)
             ax = pylab.subplot(221+spnum)
@@ -150,18 +221,17 @@ def analyze_directory(dirName):
             ax.set_yticklabels([])
             pylab.show()
             
-            gb180 = cmt.get_cmap('gb180')
             pylab.figure(fig3.number)
             ax = pylab.subplot(221+spnum)
-            pylab.imshow(phase,cmap=gb180)
+            A = show_angle(angle,power)
             pylab.title(filename)
             ax.set_xticklabels([])
             ax.set_yticklabels([])
             pylab.show()  
-    return
+    return power, angle, intensity
 
 dirName = '/home/cardini/12/'
-analyze_directory(dirName)
+pwr, ang, ints = analyze_directory(dirName)
 
 #filename = '/home/cardini/12/skyN20100201_173114.fmf'
 
