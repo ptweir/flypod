@@ -42,14 +42,19 @@ def get_centers(filenames,showFrames=0):
     if isinstance(filenames,str):
         filenames = [filenames]
         
-    top = 25
-    bottom = 25
-    left = 25
-    right =  25
+    #top = 25
+    #bottom = 25
+    #left = 25
+    #right =  25
+    
+    top = 20
+    bottom = 5
+    left = 15
+    right =  10
     
     COLOR = True
     ZOOM = 10
-    FRAMESTEP = 1
+    FRAMESTEP = 100
     
     cents = []
     lenOutStr = 0
@@ -62,7 +67,7 @@ def get_centers(filenames,showFrames=0):
             
             if showFrames:
                 frame,timestamp = fmf.get_frame(0)
-                ROIFrame = frame[top:-bottom,left:-right]
+                ROIFrame = frame[bottom:-top,left:-right]
                 dispFrame = convert(ROIFrame,fmf.format)
                 if COLOR == True:
                     dispFrame = numpy.array([dispFrame,dispFrame,dispFrame])
@@ -82,11 +87,11 @@ def get_centers(filenames,showFrames=0):
             for frameNumber in range(nFrames):
                 frame,timestamp = fmf.get_frame(frameNumber)
                 
-                ROIFrame = frame[top:-bottom,left:-right]
+                ROIFrame = frame[bottom:-top,left:-right]
                 #invertedFrame = 255 - ROIFrame
                 #invertedFrame = invertedFrame - 120
 
-                threshFrame = ROIFrame < numpy.mean(ROIFrame) - 2*numpy.std(ROIFrame)
+                threshFrame = ROIFrame < numpy.mean(ROIFrame) - 1.5*numpy.std(ROIFrame)
 
                 h,w = threshFrame.shape
                 X = numpy.arange(w)
@@ -128,7 +133,7 @@ def get_centers(filenames,showFrames=0):
     centers = numpy.rec.fromarrays(numpy.transpose(cents), [('x',numpy.float),('y',numpy.float),('t',numpy.float)])
     if showFrames:
         pylab.figure()
-        pylab.scatter(centers.x,centers.y)
+        pylab.scatter(centers.x,centers.y,s=1)
         pylab.draw()
 
     return centers
@@ -191,7 +196,7 @@ def analyze_directory(dirName):
     dirName     directory path to analyze
     
     example:
-    analyze_directory('/home/cardini/2/')
+    analyze_directory('/home/cardini/12/')
     """ 
     filenames = os.listdir(dirName)
     flyFilenames = [f for f in filenames if f[:3] == 'fly']
@@ -227,7 +232,7 @@ def analyze_directory(dirName):
             if csvFileExists:
                 centers = pylab.csv2rec(os.path.join(dirName,csvFilename))
             else:
-                centers = get_centers(os.path.join(dirName,filename),0)
+                centers = get_centers(os.path.join(dirName,filename),1)
                 pylab.rec2csv(centers,os.path.join(dirName,csvFilename))
                 
             cx, cy, r = circle_fit(centers.x,centers.y)
@@ -247,11 +252,12 @@ def analyze_directory(dirName):
             
             pylab.figure(fig1.number)
             pylab.subplot(221+spnum)
-            pylab.scatter(centers.x,centers.y)
+            pylab.scatter(centers.x,centers.y,s=1)
             pylab.hold(True)
             th = range(0,700)
             th = numpy.array(th)/100.0
             pylab.plot(r*numpy.cos(th)+cx,r*numpy.sin(th)+cy)
+            pylab.plot(cx,cy,'+')
             pylab.hold(False)
             pylab.title(filename)
             pylab.draw()
@@ -283,7 +289,7 @@ def check_orientations(fileName,orientations,cx,cy,frameStep=100):
     frame step      only plot 1 frame per frameStep [default 100]
     
     example:
-    check_orientations('/home/cardini/2/movie20091202_165430.fmf',orientations,cx,cy)
+    check_orientations('/home/cardini/12/flyS20100201_171506.fmf',orientations,cx,cy)
     """ 
     fmf = FMF.FlyMovie(fileName)
  
