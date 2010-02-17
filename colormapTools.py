@@ -202,7 +202,8 @@ def add_colordisc(image,width=101):
     X = np.array((0*y+1)*x - y0)
     Y = np.array(y*(0*x+1) - x0)
 
-    angle = np.arctan2(Y,X) + np.pi/2
+    #angle = np.arctan2(X,Y)
+    angle = np.arctan2(Y,X) + np.pi/2 #CHECK
     radius = np.sqrt(X**2 + Y**2)
     
     ring = (radius<R)
