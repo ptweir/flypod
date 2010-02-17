@@ -91,8 +91,13 @@ def do_fft(pixels,time=None):
     
     return power, phase
 
-def do_polarimetry(filename,nFrames=200):
-
+def do_polarimetry(filename,nFrames=500):
+    
+    FRAMES_TO_SKIP = 10 #number of rames at the beginning of the movie to skip
+    PLOTPIX = True
+    if PLOTPIX is True:
+        fig = pylab.figure()
+        
     fmf = FMF.FlyMovie(filename)
 
     if fmf.get_n_frames() < nFrames:
@@ -131,11 +136,17 @@ def do_polarimetry(filename,nFrames=200):
             ROIFrames = np.empty([Y[j+1]-y,X[i+1]-x,nFrames])
             timestamps = np.empty(nFrames)
             for frameNumber in range(nFrames):
-                frame,timestamps[frameNumber] = fmf.get_frame(frameNumber)
+                frame,timestamps[frameNumber] = fmf.get_frame(frameNumber+FRAMES_TO_SKIP) # skip first FRAMES_TO_SKIP frames
                 ROIFrames[:,:,frameNumber] = frame[y:Y[j+1],x:X[i+1]]
                 
             power[y:Y[j+1],x:X[i+1]], phase[y:Y[j+1],x:X[i+1]] = do_fft(ROIFrames,timestamps)
             intensity[y:Y[j+1],x:X[i+1]] = np.mean(ROIFrames,axis = 2)
+            if PLOTPIX is True:
+                pylab.figure(fig.number)
+                pylab.plot(timestamps,ROIFrames[0,0,:], label='p=' + str(power[y,x])[:4] + ' a=' + str(phase[y,x]*180/np.pi)[:4])
+                pylab.legend()
+                pylab.show()
+                pylab.draw()
             
     power = power[Y[0]:Y[-1],X[0]:X[-1]] # not checked
     phase = phase[Y[0]:Y[-1],X[0]:X[-1]]
@@ -230,7 +241,7 @@ def analyze_directory(dirName):
             pylab.show()  
     return power, angle, intensity
 
-dirName = '/home/cardini/12/'
+dirName = '/home/cardini/15/'
 pwr, ang, ints = analyze_directory(dirName)
 
 #filename = '/home/cardini/12/skyN20100201_173114.fmf'
