@@ -29,8 +29,8 @@ def show_angle(angle,power):
     #v = convolve2d(cos(angle),kernel,mode='same')
     #p = convolve2d(power,kernel,mode='same')
     
-    u = sepfir2d(sin(angle),rowFilter,colFilter)
-    v = sepfir2d(cos(angle),rowFilter,colFilter)
+    u = sepfir2d(np.sin(angle),rowFilter,colFilter)
+    v = sepfir2d(np.cos(angle),rowFilter,colFilter)
     p = sepfir2d(power,rowFilter,colFilter)
     
     U = u[ARROW_STEP/2::ARROW_STEP,ARROW_STEP/2::ARROW_STEP]*p[ARROW_STEP/2::ARROW_STEP,ARROW_STEP/2::ARROW_STEP]
@@ -44,8 +44,8 @@ def show_angle(angle,power):
     #U = U[(power[::ARROW_STEP,::ARROW_STEP]>.016)]
     #V = V[(power[::ARROW_STEP,::ARROW_STEP]>.016)]
     
-    ua = ARROW_STEP/1.5*np.nansum(sin(angle)*power)/np.nansum(power)
-    va = -ARROW_STEP/1.5*np.nansum(cos(angle)*power)/np.nansum(power)
+    ua = ARROW_STEP/1.5*np.nansum(np.sin(angle)*power)/np.nansum(power)
+    va = -ARROW_STEP/1.5*np.nansum(np.cos(angle)*power)/np.nansum(power)
     xc, yc = angle.shape[-1]/2, angle.shape[-2]/2
     
     pylab.imshow(angle,cmap=gb180)
@@ -97,11 +97,12 @@ def do_polarimetry(filename,nFrames=500):
     PLOTPIX = True
     if PLOTPIX is True:
         fig = pylab.figure()
+        fig.hold('on')
         
     fmf = FMF.FlyMovie(filename)
 
-    if fmf.get_n_frames() < nFrames:
-        nFrames = fmf.get_n_frames()
+    if fmf.get_n_frames() < nFrames+FRAMES_TO_SKIP:
+        nFrames = fmf.get_n_frames()-FRAMES_TO_SKIP
         print filename + " only has " + str(nFrames) + " frames"
 
     frame,timestamp = fmf.get_frame(0)
@@ -155,6 +156,9 @@ def do_polarimetry(filename,nFrames=500):
     return power, phase, intensity
 
 def analyze_directory(dirName):
+
+    ROT180 = True #because camera returns rotated image
+    
     filenames = os.listdir(dirName)
     skyFilenames = [f for f in filenames if f[:3] == 'sky']
 
@@ -167,6 +171,11 @@ def analyze_directory(dirName):
         h5FileExists = False
         if filename[-3:] == 'fmf':
             spnum = spnum+1
+            if spnum == 4:
+                spnum=0
+                fig1 = pylab.figure()
+                fig2 = pylab.figure()
+                fig3 = pylab.figure()
             for fname in filenames:
                 if fname == h5Filename:
                     h5FileExists = True
@@ -190,6 +199,11 @@ def analyze_directory(dirName):
             
             angle = phase/2.0 # because phase offset of intensity values is twice angle between overlapping polarizers
             
+            if ROT180:
+                power = np.rot90(power,2)
+                angle = np.rot90(angle,2)
+                intensity = np.rot90(intensity,2)
+            
             trueUpDirection = filename[3]
             if trueUpDirection == 'E':
                 power = np.rot90(power,1)
@@ -208,12 +222,14 @@ def analyze_directory(dirName):
                 angle = angle + 3*np.pi/2
 
             mask = intensity>(np.mean(intensity)-.45*np.std(intensity)) #hack
-            #mask[100:300,100:300] = True not sure if central dot (polarizer) should be in or not... if so - threshold should be ~1 std below mean intensity
+            mask[100:300,100:300] = True #not sure if central dot (polarizer) should be in or not... if so - threshold should be ~1 std below mean intensity
             power[~mask] = nan
             angle[~mask] = nan
             
+            angle = np.mod(angle+np.pi/2,2*np.pi)-np.pi/2
             angle = cmt.add_colordisc(angle,width=71)
-            angle = np.mod(angle+np.pi,2*np.pi)-np.pi
+            #angle = np.mod(angle+np.pi,2*np.pi)-np.pi
+            angle = np.mod(angle,2*np.pi)
             
             pylab.figure(fig1.number)
             ax = pylab.subplot(221+spnum)
@@ -241,7 +257,8 @@ def analyze_directory(dirName):
             pylab.show()  
     return power, angle, intensity
 
-dirName = '/home/cardini/15/'
+dirName = '/home/cardini/data/fly09/block01'
+#dirName = '/home/cardini/data/calibration/'
 pwr, ang, ints = analyze_directory(dirName)
 
 #filename = '/home/cardini/12/skyN20100201_173114.fmf'
