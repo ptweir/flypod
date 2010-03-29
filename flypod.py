@@ -30,27 +30,28 @@ def convert(frame,format):
     return frame
 
 def get_centers(filenames,showFrames=0):
-    """find center of fly in fmf files, returns record array with x,y, and time
+    """find center of fly in fmf files, returns record array with x,y and time
     
     arguments:      
     filename        list of .fmf movie files or single .fmf movie file
     showFrames      0 [default] or 1
     
     example:
-    centers = get_centers('/home/cardini/12/flyS20100201_171506.fmf',0)
+    centers = get_centers('/home/cardini/data/fly07/flyN20100317_185940.fmf',0)
     """ 
+    THRESH = 1.5
     if isinstance(filenames,str):
         filenames = [filenames]
         
-    #top = 25
-    #bottom = 25
-    #left = 25
-    #right =  25
+    top = 9
+    bottom = 15
+    left = 12
+    right =  12
     
-    top = 20
-    bottom = 5
-    left = 15
-    right =  10
+    #top = 12
+    #bottom = 22
+    #left = 15
+    #right =  10
     
     COLOR = True
     ZOOM = 10
@@ -65,9 +66,28 @@ def get_centers(filenames,showFrames=0):
 
             nFrames = fmf.get_n_frames()
             
+            frame,timestamp = fmf.get_frame(0)
+            ROIFrame = frame[bottom:-top,left:-right]
+            
+            ## mask to eliminate points in corner -> 'ring' mask
+            height,width = ROIFrame.shape
+            R = numpy.floor(width/2)
+            x0,y0 = R,R
+            if numpy.mod(x0,2)==0:
+                x0,y0 = x0-.5,y0-.5
+            
+            x = numpy.matrix(range(width))
+            y = numpy.transpose(numpy.matrix(range(height)))
+
+            xx = numpy.array((0*y+1)*x - y0)
+            yy = numpy.array(y*(0*x+1) - x0)
+
+            radius = numpy.sqrt(xx**2 + yy**2)
+            ring = (radius<R) & (radius>R/4)
+            ## end mask stuff
+            
             if showFrames:
-                frame,timestamp = fmf.get_frame(0)
-                ROIFrame = frame[bottom:-top,left:-right]
+                
                 dispFrame = convert(ROIFrame,fmf.format)
                 if COLOR == True:
                     dispFrame = numpy.array([dispFrame,dispFrame,dispFrame])
@@ -81,7 +101,7 @@ def get_centers(filenames,showFrames=0):
                 img = aii.texture
                 wnd.width = img.width
                 wnd.height = img.height
-                wnd.set_caption(filename)
+                wnd.set_caption(filename[-23:])
                 wnd.set_visible()
 
             for frameNumber in range(nFrames):
@@ -91,7 +111,7 @@ def get_centers(filenames,showFrames=0):
                 #invertedFrame = 255 - ROIFrame
                 #invertedFrame = invertedFrame - 120
 
-                threshFrame = ROIFrame < numpy.mean(ROIFrame) - 1.5*numpy.std(ROIFrame)
+                threshFrame = (ROIFrame < numpy.mean(ROIFrame) - THRESH*numpy.std(ROIFrame)) & (ring) #mask stuff
 
                 h,w = threshFrame.shape
                 X = numpy.arange(w)
@@ -110,6 +130,7 @@ def get_centers(filenames,showFrames=0):
 
                         wnd.dispatch_events()
                         dispFrame = convert(ROIFrame,fmf.format)
+                        dispFrame[~ring]=dispFrame[~ring]/4
                         #dispFrame = threshFrame.astype(numpy.uint8)*155 +100
                         if ~numpy.isnan(cY) and ~numpy.isnan(cY):
                             dispFrame[round(cY),round(cX)] = 0
@@ -117,6 +138,7 @@ def get_centers(filenames,showFrames=0):
                             dispFrame = numpy.array([dispFrame,dispFrame,dispFrame])
                             dispFrame = numpy.swapaxes(dispFrame,0,2)
                             dispFrame = numpy.swapaxes(dispFrame,0,1)
+                            #dispFrame[ring,2]=255
                             if ~numpy.isnan(cY) and ~numpy.isnan(cY):
                                 dispFrame[round(cY),round(cX),0] = 255
 
@@ -196,7 +218,7 @@ def analyze_directory(dirName):
     dirName     directory path to analyze
     
     example:
-    analyze_directory('/home/cardini/12/')
+    analyze_directory('/home/cardini/data/fly07/')
     """ 
     filenames = os.listdir(dirName)
     flyFilenames = [f for f in filenames if f[:3] == 'fly']
@@ -225,6 +247,11 @@ def analyze_directory(dirName):
         csvFileExists = False
         if filename[-3:] == 'fmf':
             spnum = spnum+1
+            if spnum == 4:
+                spnum=0
+                fig1 = pylab.figure()
+                fig2 = pylab.figure()
+                fig3 = pylab.figure()
             for fname in filenames:
                 if fname == csvFilename:
                     csvFileExists = True
@@ -235,7 +262,7 @@ def analyze_directory(dirName):
                 centers = get_centers(os.path.join(dirName,filename),1)
                 pylab.rec2csv(centers,os.path.join(dirName,csvFilename))
                 
-            cx, cy, r = circle_fit(centers.x,centers.y)
+            #cx, cy, r = circle_fit(centers.x,centers.y)
             
             orientations = numpy.arctan2(centers.x[~numpy.isnan(centers.x)]-cx,centers.y[~numpy.isnan(centers.y)]-cy)*180/numpy.pi
             #these orientations are measured from 12 O'clock, increasing clockwise
@@ -296,10 +323,10 @@ def check_orientations(fileName,orientations,cx,cy,frameStep=100):
     ax = pylab.axes()
     pylab.gray()
 
-    top = 25
-    bottom = 25
-    left = 25
-    right =  25
+    top = 20
+    bottom = 5
+    left = 15
+    right =  10
 
     nFrames = fmf.get_n_frames()
     if nFrames != len(orientations):
@@ -308,7 +335,7 @@ def check_orientations(fileName,orientations,cx,cy,frameStep=100):
     for frameNumber in range(0,nFrames,frameStep):
         frame,timestamp = fmf.get_frame(frameNumber)
         
-        ROIFrame = frame[top:-bottom,left:-right]
+        ROIFrame = frame[bottom:-top,left:-right]
         threshFrame = ROIFrame < numpy.mean(ROIFrame) - 2*numpy.std(ROIFrame)
         
         orx = (cx, numpy.sin(orientations[frameNumber]*numpy.pi/180)*cx + cx)
@@ -322,5 +349,10 @@ def check_orientations(fileName,orientations,cx,cy,frameStep=100):
         pylab.draw()
         pylab.hold(False)
 
-
-
+#fileName = '/home/cardini/16/flyS20100215_174820.fmf'
+#fileName = '/home/cardini/16/flyN20100215_173606.fmf'
+#fileName = '/home/cardini/16/flyE20100215_174202.fmf'
+#centers = get_centers(fileName,0)
+#cx, cy, r = circle_fit(centers.x,centers.y)
+#orientations = numpy.arctan2(centers.x[~numpy.isnan(centers.x)]-cx,centers.y[~numpy.isnan(centers.y)]-cy)*180/numpy.pi
+#check_orientations(fileName,orientations,cx,cy)
