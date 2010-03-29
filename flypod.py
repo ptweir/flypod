@@ -29,29 +29,25 @@ def convert(frame,format):
         frame = imops.to_rgb8(format,frame)
     return frame
 
-def get_centers(filenames,showFrames=0):
+def get_centers(filenames,showFrames=0,ROI=None):
     """find center of fly in fmf files, returns record array with x,y and time
     
     arguments:      
     filename        list of .fmf movie files or single .fmf movie file
     showFrames      0 [default] or 1
+    ROI             4-tuple of region of interest (top, bottom, left, right) or None (whole frame)
     
     example:
-    centers = get_centers('/home/cardini/data/fly07/flyN20100317_185940.fmf',0)
+    centers = get_centers('/home/cardini/data/fly07/flyN20100317_185940.fmf',0,(9,15,12,12))
     """ 
     THRESH = 1.5
     if isinstance(filenames,str):
         filenames = [filenames]
         
-    top = 9
-    bottom = 15
-    left = 12
-    right =  12
-    
-    #top = 12
-    #bottom = 22
-    #left = 15
-    #right =  10
+    if ROI is not None:
+        top, bottom, left, right = ROI
+    else:
+        top, bottom, left, right = (1,0,0,1)
     
     COLOR = True
     ZOOM = 10
@@ -222,21 +218,31 @@ def analyze_directory(dirName):
     """ 
     filenames = os.listdir(dirName)
     flyFilenames = [f for f in filenames if f[:3] == 'fly']
-    circleFileExists = False
+    paramFileExists = False
     for f, filename in enumerate(filenames):
-        if filename == 'circle.txt':
-            fd = open(os.path.join(dirName,filename))
+        if filename == 'params.txt':
+            fd = open(os.path.join(dirName,filename),mode='r')
             line = fd.readline()
             sline = line.split()
             cx,cy,r = [float(i) for i in sline]
-            circleFileExists = True
-    if not circleFileExists:
-        c = get_centers([os.path.join(dirName,f) for f in flyFilenames],0)
+            line = fd.readline()
+            sline = line.split()
+            ROI = [int(i) for i in sline]
+            fd.close()
+            paramFileExists = True
+    if not paramFileExists:
+        ROI = input('please enter 4-tuple of (top,bottom,left,right): ')
+        c = get_centers([os.path.join(dirName,f) for f in flyFilenames],0,ROI)
         cx, cy, r = circle_fit(c.x[~numpy.isnan(c.x)],c.y[~numpy.isnan(c.y)])
-        fd = open(os.path.join(dirName,'circle.txt'),mode='w')
-        fd.write('%f %f %f'%(cx,cy,r))
+        fd = open(os.path.join(dirName,'params.txt'),mode='w')
+        fd.write('%f %f %f\n'%(cx,cy,r))
+        if ROI is not None:
+            fd.write('%d %d %d %d'%ROI)
+        else:
+            fd.write('1 0 0 1')
         fd.flush()
         fd.close()
+        
 
     spnum = -1
     fig1 = pylab.figure()
@@ -259,7 +265,7 @@ def analyze_directory(dirName):
             if csvFileExists:
                 centers = pylab.csv2rec(os.path.join(dirName,csvFilename))
             else:
-                centers = get_centers(os.path.join(dirName,filename),1)
+                centers = get_centers(os.path.join(dirName,filename),1,ROI)
                 pylab.rec2csv(centers,os.path.join(dirName,csvFilename))
                 
             #cx, cy, r = circle_fit(centers.x,centers.y)
