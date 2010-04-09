@@ -17,6 +17,12 @@ import os
 
 pylab.ion()
 
+flies = {}
+class Fly:
+    def __init__(self, dirName, filename):
+        self.dirName = dirName
+        self.fileName = filename
+
 def convert(frame,format):
     """ covert frame format """ 
     if format in ['RGB8','ARGB8','YUV411','YUV422']:
@@ -29,18 +35,68 @@ def convert(frame,format):
         frame = imops.to_rgb8(format,frame)
     return frame
 
-def get_centers(filenames,showFrames=0,ROI=None):
+def get_background(filename,FRAMESTEP=1000,ROI=None):
+    """get a median background image
+    
+    arguments:      
+    filename        .fmf movie file name
+    FRAMESTEP       number of frames to skip in between ones used to calculate median (default 1000)
+    ROI             4-tuple of region of interest (top, bottom, left, right) or None (whole frame)
+    
+    example:
+    background = get_background('/home/cardini/data/fly07/flyN20100317_185940.fmf',(9,15,12,12))
+    """ 
+    if ROI is not None:
+        top, bottom, left, right = ROI
+    else:
+        top, bottom, left, right = (1,0,0,1)
+        
+    if filename[-3:] == 'fmf':
+        fmf = FMF.FlyMovie(filename)
+
+        nFrames = fmf.get_n_frames()
+        frameInds = range(0,nFrames,FRAMESTEP)
+        #frameInds = range(1,round(nFrames*.55),FRAMESTEP)
+        #frameInds = range(round(nFrames*.295),round(nFrames*.545),FRAMESTEP)
+        #frameInds = range(181000,257000,FRAMESTEP)
+        
+        frame,timestamp = fmf.get_frame(0)
+        ROIFrame = frame[bottom:-top,left:-right]
+        
+        bg = numpy.empty((ROIFrame.shape[0],ROIFrame.shape[1],len(frameInds)))
+        
+        lenOutStr = 0
+        for f,frameNumber in enumerate(frameInds):
+            frame,timestamp = fmf.get_frame(frameNumber)
+            ROIFrame = frame[bottom:-top,left:-right]
+            
+            if numpy.mod(frameNumber,FRAMESTEP) == 0:
+                outStr = str(frameNumber)+' of '+ str(nFrames)
+                sys.stdout.write("%s%s\r" % (outStr, " "*lenOutStr ))
+                lenOutStr = len(outStr)
+                sys.stdout.flush()
+
+            bg[:,:,f] = ROIFrame
+
+        background = numpy.median(bg,axis=2)
+
+    return background
+
+def get_centers(filenames,showFrames=0,ROI=None,THRESH=1.5,ringR=.25, background=None):
     """find center of fly in fmf files, returns record array with x,y and time
     
     arguments:      
     filename        list of .fmf movie files or single .fmf movie file
     showFrames      0 [default] or 1
     ROI             4-tuple of region of interest (top, bottom, left, right) or None (whole frame)
+    THRESH          threshold for number of std for pixel to be counted as foreground (default 1.5)
+    ringR           inner radius for mask (default .25)
+    background      background image (default None)
     
     example:
     centers = get_centers('/home/cardini/data/fly07/flyN20100317_185940.fmf',0,(9,15,12,12))
     """ 
-    THRESH = 1.5
+
     if isinstance(filenames,str):
         filenames = [filenames]
         
@@ -79,7 +135,7 @@ def get_centers(filenames,showFrames=0,ROI=None):
             yy = numpy.array(y*(0*x+1) - x0)
 
             radius = numpy.sqrt(xx**2 + yy**2)
-            ring = (radius<R) & (radius>R/4)
+            ring = (radius<R) & (radius>R*ringR)
             ## end mask stuff
             
             if showFrames:
@@ -104,8 +160,8 @@ def get_centers(filenames,showFrames=0,ROI=None):
                 frame,timestamp = fmf.get_frame(frameNumber)
                 
                 ROIFrame = frame[bottom:-top,left:-right]
-                #invertedFrame = 255 - ROIFrame
-                #invertedFrame = invertedFrame - 120
+                if background is not None:
+                    ROIFrame = ROIFrame - background
 
                 threshFrame = (ROIFrame < numpy.mean(ROIFrame) - THRESH*numpy.std(ROIFrame)) & (ring) #mask stuff
 
@@ -125,16 +181,17 @@ def get_centers(filenames,showFrames=0,ROI=None):
                             break
 
                         wnd.dispatch_events()
-                        dispFrame = convert(ROIFrame,fmf.format)
-                        dispFrame[~ring]=dispFrame[~ring]/4
-                        #dispFrame = threshFrame.astype(numpy.uint8)*155 +100
+                        #dispFrame = convert(ROIFrame,fmf.format)
+                        #dispFrame = ROIFrame.astype(numpy.uint8)
+                        #dispFrame[~ring]=dispFrame[~ring]/4
+                        dispFrame = threshFrame.astype(numpy.uint8)*155 +100
                         if ~numpy.isnan(cY) and ~numpy.isnan(cY):
                             dispFrame[round(cY),round(cX)] = 0
                         if COLOR == True:
                             dispFrame = numpy.array([dispFrame,dispFrame,dispFrame])
                             dispFrame = numpy.swapaxes(dispFrame,0,2)
                             dispFrame = numpy.swapaxes(dispFrame,0,1)
-                            #dispFrame[ring,2]=255
+                            dispFrame[ring,2]=255
                             if ~numpy.isnan(cY) and ~numpy.isnan(cY):
                                 dispFrame[round(cY),round(cX),0] = 255
 
@@ -207,6 +264,10 @@ def rose(data,wrapPoint=360,ax='current'):
     pylab.plot(binCenters,n)
     return wrappedData, n, bins, binCenters, ax
 
+def compare_file_times(fn1, fn2):
+    t1, t2 = int(fn1[4:12]+fn1[13:19]),int(fn2[4:12]+fn2[13:19])
+    return cmp(t1,t2)
+
 def analyze_directory(dirName):
     """runs analyzes .fmf files in dirName and creates plots
     
@@ -217,7 +278,8 @@ def analyze_directory(dirName):
     analyze_directory('/home/cardini/data/fly07/')
     """ 
     filenames = os.listdir(dirName)
-    flyFilenames = [f for f in filenames if f[:3] == 'fly']
+    flyFilenames = [f for f in filenames if f[:3] == 'fly' and f[-3:] == 'fmf']
+    flyFilenames.sort(compare_file_times)    
     paramFileExists = False
     for f, filename in enumerate(filenames):
         if filename == 'params.txt':
@@ -228,18 +290,28 @@ def analyze_directory(dirName):
             line = fd.readline()
             sline = line.split()
             ROI = [int(i) for i in sline]
+            line = fd.readline()
+            sline = line.split()
+            THRESH, ringR, useBackground = [float(i) for i in sline]
             fd.close()
             paramFileExists = True
     if not paramFileExists:
-        ROI = input('please enter 4-tuple of (top,bottom,left,right): ')
-        c = get_centers([os.path.join(dirName,f) for f in flyFilenames],0,ROI)
+        ROI = input('please enter 4-tuple of integers (top,bottom,left,right): ')
+        THRESH = input('please enter scalar THRESH: ')
+        ringR = input('please enter scalar ringR: ')
+        useBackground = input('use background subtraction (0 or 1)?: ')
+        background = None
+        if useBackground:
+            background = get_background(os.path.join(dirName,flyFilenames[0]),FRAMESTEP=500,ROI=ROI)
+        c = get_centers([os.path.join(dirName,f) for f in flyFilenames],1,ROI,THRESH,ringR,background)
         cx, cy, r = circle_fit(c.x[~numpy.isnan(c.x)],c.y[~numpy.isnan(c.y)])
         fd = open(os.path.join(dirName,'params.txt'),mode='w')
         fd.write('%f %f %f\n'%(cx,cy,r))
         if ROI is not None:
-            fd.write('%d %d %d %d'%ROI)
+            fd.write('%d %d %d %d\n'%ROI)
         else:
-            fd.write('1 0 0 1')
+            fd.write('1 0 0 1\n')
+        fd.write('%f %f %s\n'%(THRESH,ringR,useBackground))
         fd.flush()
         fd.close()
         
@@ -253,6 +325,7 @@ def analyze_directory(dirName):
         csvFileExists = False
         if filename[-3:] == 'fmf':
             spnum = spnum+1
+            background=None
             if spnum == 4:
                 spnum=0
                 fig1 = pylab.figure()
@@ -263,14 +336,22 @@ def analyze_directory(dirName):
                     csvFileExists = True
                     
             if csvFileExists:
+                
                 centers = pylab.csv2rec(os.path.join(dirName,csvFilename))
+                #cx, cy, r = circle_fit(centers.x,centers.y)
+                orientations = numpy.arctan2(centers.x[~numpy.isnan(centers.x)]-cx,centers.y[~numpy.isnan(centers.y)]-cy)*180/numpy.pi
+                #check_orientations(os.path.join(dirName,filename),orientations,cx,cy,ROI)
             else:
-                centers = get_centers(os.path.join(dirName,filename),1,ROI)
+                if useBackground:
+                    background = get_background(os.path.join(dirName,filename),FRAMESTEP=1000,ROI=ROI)
+                centers = get_centers(os.path.join(dirName,filename),0,ROI,THRESH,ringR,background)
                 pylab.rec2csv(centers,os.path.join(dirName,csvFilename))
+                #cx, cy, r = circle_fit(centers.x,centers.y)
+                orientations = numpy.arctan2(centers.x[~numpy.isnan(centers.x)]-cx,centers.y[~numpy.isnan(centers.y)]-cy)*180/numpy.pi
                 
             #cx, cy, r = circle_fit(centers.x,centers.y)
             
-            orientations = numpy.arctan2(centers.x[~numpy.isnan(centers.x)]-cx,centers.y[~numpy.isnan(centers.y)]-cy)*180/numpy.pi
+            
             #these orientations are measured from 12 O'clock, increasing clockwise
             
             trueUpDirection = filename[3]
@@ -297,7 +378,7 @@ def analyze_directory(dirName):
             
             pylab.figure(fig2.number)
             pylab.subplot(221+spnum)
-            pylab.hist(orientations)
+            pylab.hist(orientations,range=(-180,180))
             pylab.title(filename)
             pylab.draw()
             
@@ -307,11 +388,22 @@ def analyze_directory(dirName):
             ax.set_rgrids([1],'')
             ax.set_thetagrids([0,90,180,270],['E','N','W','S'])
             pylab.title(filename)
-            pylab.draw()  
-    return
+            pylab.draw()
+            
+            flies[f] = Fly(dirName,filename)
+            flies[f].x = centers.x
+            flies[f].y = centers.y
+            flies[f].times = centers.t
+            flies[f].orientations = orientations
+            flies[f].trueUpDirection = trueUpDirection
+            flies[f].background = background
+            
+            pylab.figure()
+            pylab.plot((flies[f].times[~numpy.isnan(flies[f].x)]-flies[f].times[0])/60,flies[f].orientations)
+            pylab.title('total pts missed tracking = ' + str(sum(numpy.isnan(flies[f].x))))
+    return flies
 
-
-def check_orientations(fileName,orientations,cx,cy,frameStep=100):
+def check_orientations(fileName,orientations,cx,cy,ROI=None,frameStep=100):
     """plots input orientation from center (cx,cy) on images from .fmf movie file
     
     arguments:      
@@ -325,14 +417,15 @@ def check_orientations(fileName,orientations,cx,cy,frameStep=100):
     check_orientations('/home/cardini/12/flyS20100201_171506.fmf',orientations,cx,cy)
     """ 
     fmf = FMF.FlyMovie(fileName)
- 
+
+    fig = pylab.figure()
     ax = pylab.axes()
     pylab.gray()
 
-    top = 20
-    bottom = 5
-    left = 15
-    right =  10
+    if ROI is not None:
+        top, bottom, left, right = ROI
+    else:
+        top, bottom, left, right = (1,0,0,1)
 
     nFrames = fmf.get_n_frames()
     if nFrames != len(orientations):
