@@ -144,6 +144,7 @@ def do_polarimetry(filename,nFrames=500):
             intensity[y:Y[j+1],x:X[i+1]] = np.mean(ROIFrames,axis = 2)
             if PLOTPIX is True:
                 pylab.figure(fig.number)
+                fig.hold('on')
                 pylab.plot(timestamps,ROIFrames[0,0,:], label='p=' + str(power[y,x])[:4] + ' a=' + str(phase[y,x]*180/np.pi)[:4])
                 pylab.legend()
                 pylab.show()
@@ -155,12 +156,17 @@ def do_polarimetry(filename,nFrames=500):
     #polarimetry = np.rec.fromarrays([power,phase,intensity],names='power,phase,intensity')
     return power, phase, intensity
 
+def compare_file_times(fn1, fn2):
+    t1, t2 = int(fn1[4:12]+fn1[13:19]),int(fn2[4:12]+fn2[13:19])
+    return cmp(t1,t2)
+    
 def analyze_directory(dirName):
 
     ROT180 = True #because camera returns rotated image
     
     filenames = os.listdir(dirName)
     skyFilenames = [f for f in filenames if f[:3] == 'sky']
+    skyFilenames.sort(compare_file_times)   
 
     spnum = -1
     fig1 = pylab.figure()
@@ -250,6 +256,7 @@ def analyze_directory(dirName):
             
             pylab.figure(fig3.number)
             ax = pylab.subplot(221+spnum)
+            ax.hold('on')
             A = show_angle(angle,power)
             pylab.title(filename)
             ax.set_xticklabels([])
@@ -257,7 +264,7 @@ def analyze_directory(dirName):
             pylab.show()  
     return power, angle, intensity
 
-dirName = '/home/cardini/data/fly09/block01'
+#dirName = '/home/cardini/data/fly15/'
 #dirName = '/home/cardini/data/calibration/'
 pwr, ang, ints = analyze_directory(dirName)
 
