@@ -100,6 +100,7 @@ def get_centers(filenames,showFrames=0,ROI=None,THRESH=1.5,ringR=.25, background
     ZOOM = 10
     FRAMESTEP = 100
     
+    ended_early = False
     cents = []
     lenOutStr = 0
     for f,filename in enumerate(filenames):
@@ -169,6 +170,7 @@ def get_centers(filenames,showFrames=0,ROI=None,THRESH=1.5,ringR=.25, background
                     sys.stdout.flush()
                     if showFrames:
                         if wnd.has_exit:
+                            ended_early=True
                             break
 
                         wnd.dispatch_events()
@@ -195,13 +197,17 @@ def get_centers(filenames,showFrames=0,ROI=None,THRESH=1.5,ringR=.25, background
                 cents.append((cX,cY,timestamp))
         if showFrames:
             wnd.close()
-
+            
     centers = numpy.rec.fromarrays(numpy.transpose(cents), [('x',numpy.float),('y',numpy.float),('t',numpy.float)])
+        
     if showFrames:
         pylab.figure()
         pylab.scatter(centers.x,centers.y,s=1)
         pylab.draw()
-
+        
+    if ended_early:
+        centers = None
+        
     return centers
 
 def circle_fit(dataX,dataY):
@@ -292,6 +298,8 @@ def analyze_directory(dirName):
         if useBackground:
             background = get_background(fullFilenames[-1],FRAMESTEP=1000,ROI=ROI)
         centers = get_centers(fullFilenames,1,ROI,THRESH,ringR,background)
+        if centers is None:
+            return centers
         cx, cy, r = circle_fit(centers.x,centers.y)
 
         orientations = numpy.arctan2(centers.x-cx,centers.y-cy)*180/numpy.pi
@@ -299,6 +307,7 @@ def analyze_directory(dirName):
         #these orientations are measured from 12 O'clock, increasing clockwise
             
         fly['dirName'], fly['fileName'] = dirName, flyFilenames[0]
+        fly['pklFileName'] = pklFilename
         fly['ROI'], fly['THRESH'], fly['ringR'] = ROI, THRESH, ringR
         fly['x'] = centers.x
         fly['y'] = centers.y
