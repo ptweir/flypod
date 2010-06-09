@@ -8,22 +8,11 @@ import motmot.FlyMovieFormat.FlyMovieFormat as FMF
 from pygarrayimage.arrayimage import ArrayInterfaceImage
 import motmot.imops.imops as imops
 from pyglet import window
-import sys
-import matplotlib
-#matplotlib.use('tkagg')
-import pylab
-import numpy
-import os
-
+import matplotlib, pylab, numpy
+import os, sys, time, pickle
 import tools
 
 pylab.ion()
-
-skies = {}
-class Sky:
-    def __init__(self, dirName, filename):
-        self.dirName = dirName
-        self.fileName = filename
 
 def convert(frame,format):
     """ covert frame format """ 
@@ -139,6 +128,33 @@ def get_pixel_stats(filenames,showFrames=0,ROI=None):
 
     return pixelStats
 
+def read_annotation_file(filename):
+    """ read notes from .txt file
+    example:
+    changeTimes, directions, stopStartTimes = sky_times2.read_annotation_file('LD_male_20100427_145334.txt')
+    """
+    DIRECTIONS=['N','E','S','W','L']
+    INTERVENTIONS=['w','t','b']
+    fd = open(filename,'r')
+
+    changeTimes=[]
+    directions=[]
+    stopStartTimes=[]
+
+    while 1:
+        line = fd.readline()
+        if line:
+            sline = line.split()
+            if sline[1] in DIRECTIONS:
+                changeTimes.append(float(sline[0]))
+                directions.append(sline[1])
+            elif sline[1] in INTERVENTIONS:
+                stopStartTimes.append(float(sline[0]))
+
+        if not line:  # 'readline()' returns None at end of file.
+            break
+		    
+    return 	changeTimes, directions, stopStartTimes
 
 def compare_file_times(fn1, fn2):
     t1, t2 = int(fn1[4:12]+fn1[13:19]),int(fn2[4:12]+fn2[13:19])
@@ -156,40 +172,84 @@ def analyze_directory(dirName):
     filenames = os.listdir(dirName)
     skyFilenames = [f for f in filenames if f[:3] == 'sky' and f[-3:] == 'fmf']    
     skyFilenames.sort(compare_file_times)
-    for f, filename in enumerate(skyFilenames):
-        csvFilename = filename[:-3]+'csv'
-        csvFileExists = False
-        if filename[-3:] == 'fmf':
-            for fname in filenames:
-                if fname == csvFilename:
-                    csvFileExists = True
-                    
-            if csvFileExists:
-                pixelStats = pylab.csv2rec(os.path.join(dirName,csvFilename))
-            else:
-                pixelStats = get_pixel_stats(os.path.join(dirName,filename),1)
-                pylab.rec2csv(pixelStats,os.path.join(dirName,csvFilename))
-            
-            trueUpDirection = filename[3]
-            
-            pylab.figure()
-            pylab.plot(pixelStats.t,tools.smooth(pixelStats.m,200))
-            pylab.draw()
-            pylab.title('click two points for threshold')
-            pylab.hold('on')
-            pts = pylab.ginput(2)
-            x = [pt[0] for pt in pts]
-            y = [pt[1] for pt in pts]
-            slope = (y[0] - y[1])/(x[0] - x[1])
-            threshold = slope * (pixelStats.t - x[0]) + y[0]
-            covered = tools.smooth(pixelStats.m,200) < threshold
-            pylab.plot(pixelStats.t,threshold)
-            pylab.plot(pixelStats.t,covered)
-            
-            skies[f] = Sky(dirName,filename)
-            skies[f].pixelMeans = pixelStats.m
-            skies[f].pixelStds = pixelStats.s
-            skies[f].times = pixelStats.t
-            skies[f].covered = covered
+    annotationFileExists = False
+    for f, filename in enumerate(filenames):
+        if filename[-4:] == '.txt':
+            annotationFileExists = True
+            annotationFilename = filename
+        elif filename[:3] == 'sky' and filename[-3:] == 'pkl':
+            inPklFile = open(os.path.join(dirName,filename), 'rb')
+            sky = pickle.load(inPklFile)
+            inPklFile.close()
+            break
     
-    return skies
+    else:
+        sky = {}
+        if annotationFileExists:
+            changeTimes, directions, stopStartTimes = read_annotation_file(os.path.join(dirName,annotationFilename))
+            sky['dirName'], sky['fileName'] = dirName, filename
+            sky['stopStartTimes']=stopStartTimes
+            sky['changeTimes']=changeTimes
+            sky['directions']=directions
+            pklFilename = 'sky' + annotationFilename[7:-3]+'pkl'
+        elif skyFilenames==[]:
+            print 'no sky filenames'
+            flyFilenames = [f for f in filenames if f[:3] == 'fly' and f[-3:] == 'fmf']
+            flyFilenames.sort(compare_file_times)
+            pklFilename = flyFilenames[0][:-3]+'pkl'
+            for f, filename in enumerate(flyFilenames):
+                fmf = FMF.FlyMovie(os.path.join(dirName,filename))
+                timestamps = fmf.get_all_timestamps()
+                sky['dirName'], sky['fileName'] = dirName, filename
+                sky['times'] = timestamps
+                sky['changeTimes'] = []
+                sky['directions'] = []
+        else:
+            pklFilename = skyFilenames[0][:-3]+'pkl'
+            for f, filename in enumerate(skyFilenames):
+                pixelStats = get_pixel_stats(os.path.join(dirName,filename),1)
+                pylab.figure()
+                pylab.plot(pixelStats.t,tools.smooth(pixelStats.m,100))
+                pylab.draw()
+                pylab.title('click on points, center click when done')
+                pylab.hold('on')
+                pylab.plot(pixelStats.t,tools.smooth(pixelStats.s,100))
+                pts = pylab.ginput(0,timeout=0)
+                changeTimes = [pt[0] for pt in pts]
+                y = [pt[1] for pt in pts]
+                directions = []
+                for cT in changeTimes:
+                    directions.append(input('direction after rotation at '+time.ctime(cT)+' '))
+                sky['dirName'], sky['fileName'] = dirName,filename
+                sky['pixelMeans'] = pixelStats.m
+                sky['pixelStds'] = pixelStats.s
+                sky['times'] = pixelStats.t
+                sky['changeTimes'] = changeTimes
+                sky['directions'] = directions
+        sky['pklFileName'] = pklFilename
+        outPklFile = open(os.path.join(dirName,pklFilename), 'wb')
+        pickle.dump(sky, outPklFile)
+        outPklFile.close()
+    return sky
+    
+def new_change_times(sky):
+    """record new change times
+    
+    arguments:      
+    sky     sky dict
+    """
+    pylab.figure()
+    pylab.plot(sky['times'],tools.smooth(sky['pixelMeans'],100))
+    pylab.draw()
+    pylab.title('click on points, center click when done')
+    pylab.hold('on')
+    pts = pylab.ginput(0,timeout=0)
+    changeTimes = [pt[0] for pt in pts]
+    y = [pt[1] for pt in pts]
+    directions = []
+    for cT in changeTimes:
+        directions.append(input('direction after rotation at '+time.ctime(cT)+' '))
+    sky['changeTimes'] = changeTimes
+    sky['directions'] = directions
+    return sky
+    
