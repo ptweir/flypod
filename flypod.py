@@ -4,24 +4,15 @@ PTW
 """
 
 from __future__ import division
+import pkg_resources
 import motmot.FlyMovieFormat.FlyMovieFormat as FMF
 from pygarrayimage.arrayimage import ArrayInterfaceImage
 import motmot.imops.imops as imops
 from pyglet import window
-import sys
-import matplotlib
 #matplotlib.use('tkagg')
-import pylab
-import numpy
-import os
+import pylab, numpy, os, pickle, sys, matplotlib
 
 pylab.ion()
-
-flies = {}
-class Fly:
-    def __init__(self, dirName, filename):
-        self.dirName = dirName
-        self.fileName = filename
 
 def convert(frame,format):
     """ covert frame format """ 
@@ -57,7 +48,7 @@ def get_background(filename,FRAMESTEP=1000,ROI=None):
         nFrames = fmf.get_n_frames()
         frameInds = range(0,nFrames,FRAMESTEP)
         #frameInds = range(1,round(nFrames*.55),FRAMESTEP)
-        #frameInds = range(round(nFrames*.295),round(nFrames*.545),FRAMESTEP)
+        frameInds = range(round(nFrames*.5),nFrames,FRAMESTEP)
         #frameInds = range(181000,257000,FRAMESTEP)
         
         frame,timestamp = fmf.get_frame(0)
@@ -221,13 +212,13 @@ def circle_fit(dataX,dataY):
     dataY       numpy array containing y data (must be same size as dataX)
     
     example:
-    cx, cy, r = flypod.circle_fit(x,y)
+    cx, cy, r = flypod2.circle_fit(x,y)
     """ 
-    n = len(dataX)
+    n = sum(~numpy.isnan(dataX))
     a = numpy.ones((n,3))
-    a[:,0] = dataX
-    a[:,1] = dataY
-    b = -dataX**2 - dataY**2
+    a[:,0] = dataX[~numpy.isnan(dataX)]
+    a[:,1] = dataY[~numpy.isnan(dataY)]
+    b = -dataX[~numpy.isnan(dataX)]**2 - dataY[~numpy.isnan(dataY)]**2
     #out = numpy.linalg.solve(a,b)
     ai = numpy.linalg.pinv(a)
     out = numpy.dot(ai,b)
@@ -236,32 +227,34 @@ def circle_fit(dataX,dataY):
     circR  =  ((out[0]**2+out[1]**2)/4-out[2])**.5;
     return circCenterX, circCenterY, circR
 
-def rose(data,wrapPoint=360,ax='current'):
+def rose(data,wrapPoint=360,ax='current',plotArgs={}):
     """makes polar histogram plot, returns wrapped data, n, bins, binCenters, axes
     
     arguments:      
     data            numpy array containing data
     wrap point      scalar value at which data is wrapped [default 360]
     ax              axes to plot in [default current]
+    plotArgs        dict of plot arguments (color, etc.)
     
     example:
     orw,n,b,bc,ax = rose(orientations)
     """ 
-    NUMBINS = 10
+    NUMBINS = 36
     if ax == 'current':
         ax = pylab.gca()
         
     if not isinstance(ax,matplotlib.projections.polar.PolarAxes):
-        ax = pylab.subplot(111,polar=True)
+        ax = pylab.subplot(1,1,1,polar=True)
 
     wrappedData = numpy.mod(data,wrapPoint)*2*numpy.pi/wrapPoint
-    n, bins, patches = pylab.hist(wrappedData,NUMBINS)
+    n, bins, patches = pylab.hist(wrappedData,NUMBINS,visible=False)
+    n = n/sum(n)
     binCenters = bins[:-1] + (bins[1:] - bins[:-1])/2
     n = numpy.append(n,n[0])
     binCenters = numpy.append(binCenters,binCenters[0])
     binCenters = -binCenters + numpy.pi/2 #this makes 0 straight up, with angles increasing clockwise
-    pylab.cla()
-    pylab.plot(binCenters,n)
+    pylab.plot(binCenters,n,**plotArgs)
+    ax.set_rmax(.15)
     return wrappedData, n, bins, binCenters, ax
 
 def compare_file_times(fn1, fn2):
@@ -279,129 +272,48 @@ def analyze_directory(dirName):
     """ 
     filenames = os.listdir(dirName)
     flyFilenames = [f for f in filenames if f[:3] == 'fly' and f[-3:] == 'fmf']
-    flyFilenames.sort(compare_file_times)    
-    paramFileExists = False
+    flyFilenames.sort(compare_file_times)
+    pklFilename = flyFilenames[0][:-3]+'pkl'
     for f, filename in enumerate(filenames):
-        if filename == 'params.txt':
-            fd = open(os.path.join(dirName,filename),mode='r')
-            line = fd.readline()
-            sline = line.split()
-            cx,cy,r = [float(i) for i in sline]
-            line = fd.readline()
-            sline = line.split()
-            ROI = [int(i) for i in sline]
-            line = fd.readline()
-            sline = line.split()
-            THRESH, ringR, useBackground = [float(i) for i in sline]
-            fd.close()
-            paramFileExists = True
-    if not paramFileExists:
+        if filename == pklFilename:
+            inPklFile = open(os.path.join(dirName,filename), 'rb')
+            fly = pickle.load(inPklFile)
+            inPklFile.close()
+            break
+    else:
+        fly = {}
         ROI = input('please enter 4-tuple of integers (top,bottom,left,right): ')
         THRESH = input('please enter scalar THRESH: ')
         ringR = input('please enter scalar ringR: ')
         useBackground = input('use background subtraction (0 or 1)?: ')
+        
+        fullFilenames = [os.path.join(dirName,filename) for filename in flyFilenames]
         background = None
         if useBackground:
-            background = get_background(os.path.join(dirName,flyFilenames[0]),FRAMESTEP=500,ROI=ROI)
-        c = get_centers([os.path.join(dirName,f) for f in flyFilenames],1,ROI,THRESH,ringR,background)
-        cx, cy, r = circle_fit(c.x[~numpy.isnan(c.x)],c.y[~numpy.isnan(c.y)])
-        fd = open(os.path.join(dirName,'params.txt'),mode='w')
-        fd.write('%f %f %f\n'%(cx,cy,r))
-        if ROI is not None:
-            fd.write('%d %d %d %d\n'%ROI)
-        else:
-            fd.write('1 0 0 1\n')
-        fd.write('%f %f %s\n'%(THRESH,ringR,useBackground))
-        fd.flush()
-        fd.close()
-        
+            background = get_background(fullFilenames[-1],FRAMESTEP=1000,ROI=ROI)
+        centers = get_centers(fullFilenames,1,ROI,THRESH,ringR,background)
+        cx, cy, r = circle_fit(centers.x,centers.y)
 
-    spnum = -1
-    fig1 = pylab.figure()
-    fig2 = pylab.figure()
-    fig3 = pylab.figure()
-    for f, filename in enumerate(flyFilenames):
-        csvFilename = filename[:-3]+'csv'
-        csvFileExists = False
-        if filename[-3:] == 'fmf':
-            spnum = spnum+1
-            background=None
-            if spnum == 4:
-                spnum=0
-                fig1 = pylab.figure()
-                fig2 = pylab.figure()
-                fig3 = pylab.figure()
-            for fname in filenames:
-                if fname == csvFilename:
-                    csvFileExists = True
-                    
-            if csvFileExists:
-                
-                centers = pylab.csv2rec(os.path.join(dirName,csvFilename))
-                #cx, cy, r = circle_fit(centers.x,centers.y)
-                orientations = numpy.arctan2(centers.x[~numpy.isnan(centers.x)]-cx,centers.y[~numpy.isnan(centers.y)]-cy)*180/numpy.pi
-                #check_orientations(os.path.join(dirName,filename),orientations,cx,cy,ROI)
-            else:
-                if useBackground:
-                    background = get_background(os.path.join(dirName,filename),FRAMESTEP=1000,ROI=ROI)
-                centers = get_centers(os.path.join(dirName,filename),0,ROI,THRESH,ringR,background)
-                pylab.rec2csv(centers,os.path.join(dirName,csvFilename))
-                #cx, cy, r = circle_fit(centers.x,centers.y)
-                orientations = numpy.arctan2(centers.x[~numpy.isnan(centers.x)]-cx,centers.y[~numpy.isnan(centers.y)]-cy)*180/numpy.pi
-                
-            #cx, cy, r = circle_fit(centers.x,centers.y)
+        orientations = numpy.arctan2(centers.x-cx,centers.y-cy)*180/numpy.pi
+        
+        #these orientations are measured from 12 O'clock, increasing clockwise
             
-            
-            #these orientations are measured from 12 O'clock, increasing clockwise
-            
-            trueUpDirection = filename[3]
-            if trueUpDirection == 'E':
-                orientations = orientations+90
-            elif trueUpDirection == 'S':
-                orientations = orientations+180
-            elif trueUpDirection == 'W':
-                orientations = orientations+270
-                
-            orientations = numpy.mod(orientations+180,360)-180
-            
-            pylab.figure(fig1.number)
-            pylab.subplot(221+spnum)
-            pylab.scatter(centers.x,centers.y,s=1)
-            pylab.hold(True)
-            th = range(0,700)
-            th = numpy.array(th)/100.0
-            pylab.plot(r*numpy.cos(th)+cx,r*numpy.sin(th)+cy)
-            pylab.plot(cx,cy,'+')
-            pylab.hold(False)
-            pylab.title(filename)
-            pylab.draw()
-            
-            pylab.figure(fig2.number)
-            pylab.subplot(221+spnum)
-            pylab.hist(orientations,range=(-180,180))
-            pylab.title(filename)
-            pylab.draw()
-            
-            pylab.figure(fig3.number)
-            pylab.subplot(221+spnum,polar=True)
-            orw,n,b,bc,ax = rose(orientations,360)
-            ax.set_rgrids([1],'')
-            ax.set_thetagrids([0,90,180,270],['E','N','W','S'])
-            pylab.title(filename)
-            pylab.draw()
-            
-            flies[f] = Fly(dirName,filename)
-            flies[f].x = centers.x
-            flies[f].y = centers.y
-            flies[f].times = centers.t
-            flies[f].orientations = orientations
-            flies[f].trueUpDirection = trueUpDirection
-            flies[f].background = background
-            
-            pylab.figure()
-            pylab.plot((flies[f].times[~numpy.isnan(flies[f].x)]-flies[f].times[0])/60,flies[f].orientations)
-            pylab.title('total pts missed tracking = ' + str(sum(numpy.isnan(flies[f].x))))
-    return flies
+        fly['dirName'], fly['fileName'] = dirName, flyFilenames[0]
+        fly['ROI'], fly['THRESH'], fly['ringR'] = ROI, THRESH, ringR
+        fly['x'] = centers.x
+        fly['y'] = centers.y
+        fly['times'] = centers.t
+        fly['orientations'] = orientations
+        fly['background'] = background
+        
+        pylab.figure()
+        pylab.plot((fly['times']-fly['times'][0])/60,fly['orientations'])
+        pylab.title('total pts missed tracking = ' + str(sum(numpy.isnan(fly['x']))))
+
+    outPklFile = open(os.path.join(dirName,pklFilename), 'wb')
+    pickle.dump(fly, outPklFile)
+    outPklFile.close()
+    return fly
 
 def check_orientations(fileName,orientations,cx,cy,ROI=None,frameStep=100):
     """plots input orientation from center (cx,cy) on images from .fmf movie file
@@ -448,10 +360,3 @@ def check_orientations(fileName,orientations,cx,cy,ROI=None,frameStep=100):
         pylab.draw()
         pylab.hold(False)
 
-#fileName = '/home/cardini/16/flyS20100215_174820.fmf'
-#fileName = '/home/cardini/16/flyN20100215_173606.fmf'
-#fileName = '/home/cardini/16/flyE20100215_174202.fmf'
-#centers = get_centers(fileName,0)
-#cx, cy, r = circle_fit(centers.x,centers.y)
-#orientations = numpy.arctan2(centers.x[~numpy.isnan(centers.x)]-cx,centers.y[~numpy.isnan(centers.y)]-cy)*180/numpy.pi
-#check_orientations(fileName,orientations,cx,cy)
