@@ -177,7 +177,7 @@ def analyze_directory(dirName):
         if filename[-4:] == '.txt':
             annotationFileExists = True
             annotationFilename = filename
-        elif filename[:3] == 'sky' and filename[-3:] == 'pkl':
+        elif filename[:4] == 'aSky' and filename[-3:] == 'pkl': # not sure which will choose if >1 pkl file
             inPklFile = open(os.path.join(dirName,filename), 'rb')
             sky = pickle.load(inPklFile)
             inPklFile.close()
@@ -191,12 +191,10 @@ def analyze_directory(dirName):
             sky['stopStartTimes']=stopStartTimes
             sky['changeTimes']=changeTimes
             sky['directions']=directions
-            pklFilename = 'sky' + annotationFilename[7:-3]+'pkl'
         elif skyFilenames==[]:
             print 'no sky filenames'
             flyFilenames = [f for f in filenames if f[:3] == 'fly' and f[-3:] == 'fmf']
             flyFilenames.sort(compare_file_times)
-            pklFilename = flyFilenames[0][:-3]+'pkl'
             for f, filename in enumerate(flyFilenames):
                 fmf = FMF.FlyMovie(os.path.join(dirName,filename))
                 timestamps = fmf.get_all_timestamps()
@@ -205,7 +203,6 @@ def analyze_directory(dirName):
                 sky['changeTimes'] = []
                 sky['directions'] = []
         else:
-            pklFilename = skyFilenames[0][:-3]+'pkl'
             for f, filename in enumerate(skyFilenames):
                 pixelStats = get_pixel_stats(os.path.join(dirName,filename),1)
                 pylab.figure()
@@ -226,6 +223,8 @@ def analyze_directory(dirName):
                 sky['times'] = pixelStats.t
                 sky['changeTimes'] = changeTimes
                 sky['directions'] = directions
+        date_time = time.strftime("%Y%m%d_%H%M%S")
+        pklFilename = 'aSky'+ date_time +'.pkl'
         sky['pklFileName'] = pklFilename
         outPklFile = open(os.path.join(dirName,pklFilename), 'wb')
         pickle.dump(sky, outPklFile)
