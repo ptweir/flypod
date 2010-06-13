@@ -10,7 +10,7 @@ from pygarrayimage.arrayimage import ArrayInterfaceImage
 import motmot.imops.imops as imops
 from pyglet import window
 #matplotlib.use('tkagg')
-import pylab, numpy, os, pickle, sys, matplotlib
+import pylab, numpy, os, pickle, sys, matplotlib, time
 
 pylab.ion()
 
@@ -48,7 +48,7 @@ def get_background(filename,FRAMESTEP=1000,ROI=None):
         nFrames = fmf.get_n_frames()
         frameInds = range(0,nFrames,FRAMESTEP)
         #frameInds = range(1,round(nFrames*.55),FRAMESTEP)
-        frameInds = range(round(nFrames*.5),nFrames,FRAMESTEP)
+        #frameInds = range(round(nFrames*.5),nFrames,FRAMESTEP)
         #frameInds = range(181000,257000,FRAMESTEP)
         
         frame,timestamp = fmf.get_frame(0)
@@ -202,7 +202,8 @@ def get_centers(filenames,showFrames=0,ROI=None,THRESH=1.5,ringR=.25, background
         
     if showFrames:
         pylab.figure()
-        pylab.scatter(centers.x,centers.y,s=1)
+        #pylab.scatter(centers.x,centers.y,s=1)
+        pylab.plot(centers.x,centers.y)
         pylab.draw()
         
     if ended_early:
@@ -279,7 +280,14 @@ def analyze_directory(dirName):
     filenames = os.listdir(dirName)
     flyFilenames = [f for f in filenames if f[:3] == 'fly' and f[-3:] == 'fmf']
     flyFilenames.sort(compare_file_times)
-    pklFilename = flyFilenames[0][:-3]+'pkl'
+    pklFilenames = [f for f in filenames if f[:4] == 'aFly' and f[-3:] == 'pkl']
+    pklFilenames.sort(compare_file_times)
+    if len(pklFilenames) > 0:
+        pklFilename = pklFilenames[-1]
+    else:
+        date_time = time.strftime("%Y%m%d_%H%M%S")
+        pklFilename = 'aFly'+ date_time +'.pkl'
+
     for f, filename in enumerate(filenames):
         if filename == pklFilename:
             inPklFile = open(os.path.join(dirName,filename), 'rb')
