@@ -4,13 +4,12 @@ from scipy.stats.morestats import circmean, circvar
 pylab.ion()
 
 #dirName = '/home/cardini/data/indoor/fly16/'
-#dirName = '/home/cardini/data/circularPolarizer/fly16'
-dirName = '/home/cardini/data/grayFilter/fly04'
-#dirName = '/home/cardini/data/fly37'
+#dirName = '/home/cardini/data/circularPolarizer/fly07'
+dirName = '/home/cardini/data/grayFilter/fly12'
+#dirName = '/home/cardini/data/noFilter/fly38'
 fly = flypod.analyze_directory(dirName)
 if fly is not None:
     sky = sky_times.analyze_directory(dirName)
-    f=0
 
     COLORS = dict(N='b',E='y',S='r',W='g')
     ROTATIONS = dict(N=0,E=90,S=180,W=270)
