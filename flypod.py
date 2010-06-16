@@ -254,7 +254,7 @@ def rose(data,wrapPoint=360,ax='current',plotArgs={}):
         ax = pylab.subplot(1,1,1,polar=True)
 
     wrappedData = numpy.mod(data,wrapPoint)*2*numpy.pi/wrapPoint
-    n, bins, patches = pylab.hist(wrappedData,NUMBINS,visible=False)
+    n, bins, patches = pylab.hist(wrappedData,NUMBINS,range=(0,2*numpy.pi),visible=False)
     n = n/sum(n)
     binCenters = bins[:-1] + (bins[1:] - bins[:-1])/2
     n = numpy.append(n,n[0])
