@@ -2,9 +2,7 @@ import numpy as np
 import motmot.FlyMovieFormat.FlyMovieFormat as FMF
 import colormapTools as cmt
 import pylab
-import sys
-import time
-import tables
+import sys, os, time
 from scipy.stats.morestats import circmean
 from scipy.signal import sepfir2d, gaussian #, convolve2d
 
@@ -53,6 +51,8 @@ def show_angle(angle,power):
     pylab.quiver(X,Y,U,V,pivot='middle',color='w',headwidth=1,headlength=0)
     pylab.arrow(xc,yc,ua,va,color='w',linewidth=2)
     pylab.arrow(xc,yc,-ua,-va,color='w',linewidth=2)
+    ax=pylab.gca()
+    ax.set_axis_off()
     pylab.show()
 
     A = np.arctan2(-ua,va)
@@ -82,7 +82,8 @@ def do_fft(pixels,time=None):
 
     ind = np.argmax(pwr*(freq!=0),axis=2)
     i = np.median(ind)
-    print freq[i]
+    #i=9
+    print i, freq[i]
     
     s = np.sum(pwr,axis=2)
     
@@ -91,21 +92,18 @@ def do_fft(pixels,time=None):
     
     return power, phase
 
-def do_polarimetry(filename,nFrames=500):
+def do_polarimetry(fmf,firstFrame=0,nFrames=500):
     
-    FRAMES_TO_SKIP = 10 #number of rames at the beginning of the movie to skip
-    PLOTPIX = True
+    PLOTPIX = False
     if PLOTPIX is True:
         fig = pylab.figure()
         fig.hold('on')
         
-    fmf = FMF.FlyMovie(filename)
+    if fmf.get_n_frames() < nFrames+firstFrame:
+        nFrames = fmf.get_n_frames()-firstFrame
+        print "fmf only has " + str(fmf.get_n_frames()) + " frames"
 
-    if fmf.get_n_frames() < nFrames+FRAMES_TO_SKIP:
-        nFrames = fmf.get_n_frames()-FRAMES_TO_SKIP
-        print filename + " only has " + str(nFrames) + " frames"
-
-    frame,timestamp = fmf.get_frame(0)
+    frame,timestamp = fmf.get_frame(firstFrame)
 
     N = 3
     Nx = N
@@ -127,17 +125,11 @@ def do_polarimetry(filename,nFrames=500):
     intensity.fill(np.nan)
 
     for i,x in enumerate(X[:-1]):
-    #for i,x in enumerate(X[:2]):
-        sys.stdout.write('i='+str(i)+'\n')
-        sys.stdout.flush()
         for j,y in enumerate(Y[:-1]):
-        #for j,y in enumerate(Y[:2]):
-            sys.stdout.write('j='+str(j)+'\n')
-            sys.stdout.flush()
             ROIFrames = np.empty([Y[j+1]-y,X[i+1]-x,nFrames])
             timestamps = np.empty(nFrames)
             for frameNumber in range(nFrames):
-                frame,timestamps[frameNumber] = fmf.get_frame(frameNumber+FRAMES_TO_SKIP) # skip first FRAMES_TO_SKIP frames
+                frame,timestamps[frameNumber] = fmf.get_frame(frameNumber+firstFrame) # start at firstFrame
                 ROIFrames[:,:,frameNumber] = frame[y:Y[j+1],x:X[i+1]]
                 
             power[y:Y[j+1],x:X[i+1]], phase[y:Y[j+1],x:X[i+1]] = do_fft(ROIFrames,timestamps)
@@ -153,139 +145,90 @@ def do_polarimetry(filename,nFrames=500):
     power = power[Y[0]:Y[-1],X[0]:X[-1]] # not checked
     phase = phase[Y[0]:Y[-1],X[0]:X[-1]]
     intensity = intensity[Y[0]:Y[-1],X[0]:X[-1]]
-    #polarimetry = np.rec.fromarrays([power,phase,intensity],names='power,phase,intensity')
     return power, phase, intensity
 
 def compare_file_times(fn1, fn2):
     t1, t2 = int(fn1[4:12]+fn1[13:19]),int(fn2[4:12]+fn2[13:19])
     return cmp(t1,t2)
     
-def analyze_directory(dirName):
-
+def analyze_file(sky,fname=None):
+    """
+    example:
+    power,angle,intensity=polarimetry.analyze_file(sky)
+    """
+    WAIT_TIME = 20 #seconds after changeTimes to start polarimetry
     ROT180 = True #because camera returns rotated image
     
-    filenames = os.listdir(dirName)
-    skyFilenames = [f for f in filenames if f[:3] == 'sky']
-    skyFilenames.sort(compare_file_times)   
-
-    spnum = -1
-    fig1 = pylab.figure()
-    fig2 = pylab.figure()
-    fig3 = pylab.figure()
-    for f, filename in enumerate(skyFilenames):
-        h5Filename = filename[:-3]+'h5'
-        h5FileExists = False
-        if filename[-3:] == 'fmf':
-            spnum = spnum+1
-            if spnum == 4:
-                spnum=0
-                fig1 = pylab.figure()
-                fig2 = pylab.figure()
-                fig3 = pylab.figure()
-            for fname in filenames:
-                if fname == h5Filename:
-                    h5FileExists = True
-                    
-            if h5FileExists:
-                print "reading polarimetry from "+os.path.join(dirName,h5Filename)
-                h5File = tables.openFile(os.path.join(dirName,h5Filename),'r')
-                power = h5File.getNode("/power").read()
-                phase = h5File.getNode("/phase").read()
-                intensity = h5File.getNode("/intensity").read()
-            else:
-                print "doing polarimetry on "+os.path.join(dirName,filename)
-                power, phase, intensity = do_polarimetry(os.path.join(dirName,filename))
-                h5File = tables.openFile(os.path.join(dirName,h5Filename), mode = "w", title = h5Filename + "pol data")
-                h5File.createArray(h5File.root,"power",power)
-                h5File.createArray(h5File.root,"phase",phase)
-                h5File.createArray(h5File.root,"intensity",intensity)
-                h5File.close()
-                            
-            phase = phase - circmean(np.ravel(phase[222:261,222:272]),high=np.pi,low=-np.pi)
+    if fname is None:
+        fileName = sky['fileName']
+    else:
+        fileName = fname
+    dirName = sky['dirName']
+    
+    N = len(sky['changeTimes'][:-1])
+    
+    fmf = FMF.FlyMovie(os.path.join(dirName,fileName))
+    frame,timestamp = fmf.get_frame(0)
+    
+    if not sky.has_key('times'):
+        timestamps = fmf.get_all_timestamps()
+    else:
+        timestamps = sky['times']
+    
+    for i, startTime in enumerate(sky['changeTimes'][:-1]):
+        startInd = np.argmin(abs(startTime + WAIT_TIME - timestamps))
+        sys.stdout.write(time.ctime(startTime + WAIT_TIME)+'\n')
+        #sys.stdout.write("%s\n" % (str(i)))
+        sys.stdout.flush()
+        pwr, phs, ints = do_polarimetry(fmf,firstFrame=startInd,nFrames=500)
+                        
+        phs = phs - circmean(np.ravel(phs[222:261,222:272]),high=np.pi,low=-np.pi)
+        
+        ang = phs/2.0 # because phase offset of intensity values is twice angle between overlapping polarizers
+        
+        if ROT180:
+            pwr = np.rot90(pwr,2)
+            ang = np.rot90(ang,2)
+            ints = np.rot90(ints,2)
+        """
+        trueUpDirection = filename[3]
+        if trueUpDirection == 'E':
+            pwr = np.rot90(pwr,1)
+            ang = np.rot90(ang,1)
+            ints = np.rot90(ints,1)
+            ang = ang + np.pi/2
+        elif trueUpDirection == 'S':
+            pwr = np.rot90(pwr,2)
+            ang = np.rot90(ang,2)
+            ints = np.rot90(ints,2)
+            ang = ang + np.pi
+        elif trueUpDirection == 'W':
+            pwr = np.rot90(pwr,3)
+            ang = np.rot90(ang,3)
+            ints = np.rot90(ints,3)
+            ang = ang + 3*np.pi/2
+        """
+        
+        mask = ints>(np.mean(ints)-.45*np.std(ints)) #hack
+        mask[100:300,100:300] = True #not sure if central dot (polarizer) should be in or not... if so - threshold should be ~1 std below mean intensity
+        pwr[~mask] = np.nan
+        ang[~mask] = np.nan
+        
+        ang = np.mod(ang+np.pi/2,2*np.pi)-np.pi/2
+        ang = cmt.add_colordisc(ang,width=71)
+        #ang = np.mod(ang+np.pi,2*np.pi)-np.pi
+        ang = np.mod(ang,2*np.pi)
+        
+        if i==0:
+            w,h=ang.shape
+            power = np.empty([w,h,N])
+            power.fill(np.nan)
+            angle = np.empty([w,h,N])
+            angle.fill(np.nan)
+            intensity = np.empty([w,h,N])
+            intensity.fill(np.nan)
             
-            angle = phase/2.0 # because phase offset of intensity values is twice angle between overlapping polarizers
-            
-            if ROT180:
-                power = np.rot90(power,2)
-                angle = np.rot90(angle,2)
-                intensity = np.rot90(intensity,2)
-            
-            trueUpDirection = filename[3]
-            if trueUpDirection == 'E':
-                power = np.rot90(power,1)
-                angle = np.rot90(angle,1)
-                intensity = np.rot90(intensity,1)
-                angle = angle + np.pi/2
-            elif trueUpDirection == 'S':
-                power = np.rot90(power,2)
-                angle = np.rot90(angle,2)
-                intensity = np.rot90(intensity,2)
-                angle = angle + np.pi
-            elif trueUpDirection == 'W':
-                power = np.rot90(power,3)
-                angle = np.rot90(angle,3)
-                intensity = np.rot90(intensity,3)
-                angle = angle + 3*np.pi/2
-
-            mask = intensity>(np.mean(intensity)-.45*np.std(intensity)) #hack
-            mask[100:300,100:300] = True #not sure if central dot (polarizer) should be in or not... if so - threshold should be ~1 std below mean intensity
-            power[~mask] = nan
-            angle[~mask] = nan
-            
-            angle = np.mod(angle+np.pi/2,2*np.pi)-np.pi/2
-            angle = cmt.add_colordisc(angle,width=71)
-            #angle = np.mod(angle+np.pi,2*np.pi)-np.pi
-            angle = np.mod(angle,2*np.pi)
-            
-            pylab.figure(fig1.number)
-            ax = pylab.subplot(221+spnum)
-            pylab.imshow(intensity,cmap='gray')
-            pylab.title(filename)
-            ax.set_xticklabels([])
-            ax.set_yticklabels([])
-            pylab.show()
-            
-            pylab.figure(fig2.number)
-            ax = pylab.subplot(221+spnum)
-            pylab.imshow(power,cmap='jet')
-            pylab.colorbar()
-            pylab.title(filename)
-            ax.set_xticklabels([])
-            ax.set_yticklabels([])
-            pylab.show()
-            
-            pylab.figure(fig3.number)
-            ax = pylab.subplot(221+spnum)
-            ax.hold('on')
-            A = show_angle(angle,power)
-            pylab.title(filename)
-            ax.set_xticklabels([])
-            ax.set_yticklabels([])
-            pylab.show()  
+        power[:,:,i],angle[:,:,i],intensity[:,:,i]=pwr,ang,ints
     return power, angle, intensity
 
-#dirName = '/home/cardini/data/fly15/'
-#dirName = '/home/cardini/data/calibration/'
-pwr, ang, ints = analyze_directory(dirName)
 
-#filename = '/home/cardini/12/skyN20100201_173114.fmf'
-
-#power, phase, intensity = do_polarimetry(filename)
-#phase = phase - np.mean(phase[222:261,338:382])
-#phase = cmt.add_colordisc(phase)
-#phase = np.mod(phase,2*np.pi)
-
-#pylab.figure()
-#pylab.imshow(intensity,cmap='gray')
-#pylab.show()
-
-#pylab.figure()
-#pylab.imshow(power,cmap='jet')
-#pylab.colorbar()
-#pylab.show()
-
-#gb180 = cmt.get_cmap('gb180')
-
-#pylab.figure()
-#pylab.imshow(phase,cmap=gb180)
-#pylab.show()
