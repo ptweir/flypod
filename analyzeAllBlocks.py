@@ -18,7 +18,7 @@ def circvar(alpha):
 rootDir = '/home/cardini/data/'
 #baseDirs = ['grayFilter']
 #baseDirs = ['grayFilter','circularPolarizer']
-baseDirs = ['grayFilter','circularPolarizer','noFilter' ]
+baseDirs = ['noFilter','grayFilter','circularPolarizer','uvFilter']
 try:
     flies
 except NameError:

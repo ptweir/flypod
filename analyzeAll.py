@@ -10,13 +10,17 @@ def compare_dir_names(dn1, dn2):
 COLORS = dict(N='b',E='y',S='r',W='g')
 ROTATIONS = dict(N=0,E=90,S=180,W=270)
 
-MAX_TIME = 12*3*60+20
+MAX_TIME = 12*1*60+20
 MIN_TIME = 12*1*60
+
+PRECHANGE_BUFFER = 10
+POSTCHANGE_BUFFER = 10
 
 FPS = 291
 SPEED = 0.5
 
 baseDirs = ['/home/cardini/data/grayFilter','/home/cardini/data/circularPolarizer']
+#baseDirs = ['/home/cardini/data/grayFilter','/home/cardini/data/circularPolarizer','/home/cardini/data/noFilter' ]
 circVar, distances, totalTimes = {}, {}, {}
 for b, baseDir in enumerate(baseDirs):
     dNames = os.listdir(baseDir)
@@ -59,7 +63,7 @@ for b, baseDir in enumerate(baseDirs):
         orientations[inds] = numpy.nan
         
         for i, cT in enumerate(sky['changeTimes'][:-1]):
-            inds = (times > cT) & (times < sky['changeTimes'][i+1])
+            inds = (times > cT+POSTCHANGE_BUFFER) & (times < sky['changeTimes'][i+1]-PRECHANGE_BUFFER)
             ors = orientations[inds]
             ors = ors[~numpy.isnan(ors)]
             if len(ors)>0:
@@ -97,7 +101,7 @@ for b, baseDir in enumerate(baseDirs):
             rotations = numpy.empty(fly['times'].shape)
             rotations.fill(numpy.nan)
             for i, cT in enumerate(sky['changeTimes'][:-1]):
-                inds = (times > cT) & (times <= sky['changeTimes'][i+1])
+                inds = (times > cT+POSTCHANGE_BUFFER) & (times <= sky['changeTimes'][i+1]-PRECHANGE_BUFFER)
                 rotations[inds] = ROTATIONS[sky['directions'][i]]
                 
             worldOrientations = orientations+rotations
@@ -119,7 +123,7 @@ pylab.figure()
 pylab.hold('on')
 ax = pylab.gca()
 for b, baseDir in enumerate(baseDirs):
-    pylab.scatter(circVar[baseDir]*0+b,circVar[baseDir])
+    pylab.scatter((numpy.random.rand(len(circVar[baseDir]))-.5)/3+b,circVar[baseDir],marker='+')
     
 ax.set_xticks(range(len(baseDirs)+1))
 ax.set_xticklabels(baseDirs)

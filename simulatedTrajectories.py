@@ -15,7 +15,7 @@ def circvar(alpha):
     V = 1-R
     return V
     
-def cumprobdist(data,xmax=None):
+def cumprobdist(data,xmax=None,plotArgs={}):
     if xmax is None:
         xmax = numpy.max(data)
     elif xmax < numpy.max(data):
@@ -26,12 +26,13 @@ def cumprobdist(data,xmax=None):
     X.sort()
     Y = numpy.concatenate(([0.0],arange(num_points),arange(num_points)+1,[num_points]))/num_points
     Y.sort()
-    line = plot(X,Y)
+    line = plot(X,Y,**plotArgs)
     return line[0]
 
 rootDir = '/home/cardini/data/'
-#baseDirs = ['grayFilter','circularPolarizer']
-baseDirs = ['grayFilter','circularPolarizer','noFilter' ]
+#baseDirs = ['grayFilter','circularPolarizer', 'uvFilter' ]
+baseDirs = ['noFilter','grayFilter','circularPolarizer','uvFilter' ]
+PLOTCOLORS = ['r','b','g','c']
 try:
     flies
 except NameError:
@@ -58,11 +59,12 @@ CHANGEBUFFER = 10
 COLORS = dict(N='b',E='y',S='r',W='g')
 ROTATIONS = dict(N=0,E=90,S=180,W=270)
 SPEED = 0.5
-DMAX = 330
+DMAX = 330 #800
 Dist = {}
 angSpeed = {}
 pylab.figure()
-for b, baseDir in enumerate(flies.keys()):
+#for b, baseDir in enumerate(flies.keys()):
+for b, baseDir in enumerate(baseDirs):
     numFlies = len(flies[baseDir])
     D = numpy.empty(numFlies)
     D.fill(nan)
@@ -114,15 +116,16 @@ for b, baseDir in enumerate(flies.keys()):
             D[fNum]=numpy.sqrt(simTrajX[-1]**2 + simTrajY[-1]**2)
             print numpy.nansum(numpy.diff(times))
             #T[fNum] = numpy.nansum(numpy.diff(times))
-            l = pylab.plot(simTrajX,simTrajY)
-            pylab.scatter(simTrajX[-1],simTrajY[-1],color=l[0].get_color())
+            l = pylab.plot(simTrajX,simTrajY,PLOTCOLORS[b])
+            #pylab.scatter(simTrajX[-1],simTrajY[-1],color=l[0].get_color())
+            pylab.scatter(simTrajX[-1],simTrajY[-1],color='k')
             
             changeInds = [abs(times[~numpy.isnan(times)] - (sky['changeTimes'][i]-CHANGEBUFFER)).argmin() for i in range(len(sky['changeTimes']))]
             pylab.plot(simTrajX[changeInds[1:4]],simTrajY[changeInds[1:4]],'.',color=l[0].get_color())
 
     ax=gca()
     th = numpy.arange(0,2*numpy.pi,.01)
-    R1 = 115
+    R1 = 115 #400
     xcirc = R1*cos(th)
     ycirc = R1*sin(th)
     plot(xcirc,ycirc,color='k')
@@ -138,7 +141,8 @@ pylab.figure()
 pylab.hold('on')
 ax = pylab.gca()
 for b, baseDir in enumerate(baseDirs):
-    line = cumprobdist(Dist[baseDir][~numpy.isnan(Dist[baseDir])],DMAX)
+    plotArgs = dict(color=PLOTCOLORS[b])
+    line = cumprobdist(Dist[baseDir][~numpy.isnan(Dist[baseDir])],DMAX,plotArgs=plotArgs)
     #line = cumprobdist(angSpeed[baseDir][~numpy.isnan(angSpeed[baseDir])])
 
     line.set_label(baseDir)
@@ -146,4 +150,4 @@ for b, baseDir in enumerate(baseDirs):
 ax.axvline(R1,color='k')
 ax.legend(loc='lower right')
 ax.set_ylim((-.1,1.1))
-ax.set_xlim((-25,350))
+ax.set_xlim((-25,DMAX))

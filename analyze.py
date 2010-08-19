@@ -4,10 +4,12 @@ from scipy.stats.morestats import circmean, circvar
 pylab.ion()
 
 #dirName = '/home/cardini/data/indoor/fly16/'
-#dirName = '/home/cardini/data/circularPolarizer/fly07'
-dirName = '/home/cardini/data/grayFilter/fly12'
+#dirName = '/home/cardini/data/circularPolarizer/fly02'
+#dirName = '/home/cardini/data/grayFilter/fly20'
 #dirName = '/home/cardini/data/noFilter/fly38'
+dirName = '/home/cardini/data/uvFilter/fly03'
 fly = flypod.analyze_directory(dirName)
+CHANGEBUFFER = 10
 if fly is not None:
     sky = sky_times.analyze_directory(dirName)
 
@@ -24,13 +26,14 @@ if fly is not None:
     times = numpy.copy(fly['times'])
     #orientations = numpy.unwrap(orientations,180)
     pylab.figure()
-    pylab.plot(times,orientations)
+    pylab.plot(times,orientations,'k')
     ax = gca()
-    #ax.set_xticklabels([time.ctime(float(ti))[11:19] for ti in ax.get_xticks()])
-    #ax.set_yticks((0,90,180,270,360))
+    
+    ax.set_xticklabels([time.ctime(float(ti))[11:19] for ti in ax.get_xticks()])
+    ax.set_yticks((0,90,180,270,360))
     for i, cT in enumerate(sky['changeTimes'][:-1]):
         pylab.text(cT,380,sky['directions'][i])
-        pylab.axvspan(cT, sky['changeTimes'][i+1], facecolor=COLORS[sky['directions'][i]], alpha=0.2)
+        pylab.axvspan(cT-CHANGEBUFFER, sky['changeTimes'][i+1]-CHANGEBUFFER, facecolor=COLORS[sky['directions'][i]], alpha=0.2)
         #pylab.draw()
     if sum(numpy.isnan(orientations)) > 0:
         for trackingErrorTime in times[numpy.isnan(orientations)]:

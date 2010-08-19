@@ -97,7 +97,7 @@ def get_centers(filenames,showFrames=0,ROI=None,THRESH=1.5,ringR=.25, background
         top, bottom, left, right = (1,0,0,1)
     
     COLOR = True
-    ZOOM = 10
+    ZOOM = 2
     FRAMESTEP = 100
     
     ended_early = False
