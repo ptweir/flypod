@@ -34,6 +34,21 @@ def cumprobdist(ax,data,xmax=None,plotArgs={}):
     line = ax.plot(X,Y,**plotArgs)
     return line[0]
     
+def detect_saccades0(orientations, timestep):
+    orientations = orientations[~numpy.isnan(orientations)]
+
+    unwrappedOrientations = numpy.unwrap(orientations,180)
+    SMOOTH_TIME = .5
+    smoothWindow = int(round(SMOOTH_TIME/timestep))
+    smoothedOrientations = tools.smooth(unwrappedOrientations,smoothWindow)
+    angSpds = abs(numpy.diff(smoothedOrientations))/timestep
+    sacInds = tools.local_minima(-angSpds) & (angSpds > 10)
+    saccades = angSpds[sacInds]
+    #sacs = tools.zigzag(smoothedOrientations)
+    #sacInds = abs(sacs) > 10
+    #saccades = sacs[sacInds]
+    return saccades
+
 def detect_saccades(orientations, timestep):
     orientations = orientations[~numpy.isnan(orientations)]
 
@@ -41,21 +56,41 @@ def detect_saccades(orientations, timestep):
     SMOOTH_TIME = 1
     smoothWindow = int(round(SMOOTH_TIME/timestep))
     smoothedOrientations = tools.smooth(unwrappedOrientations,smoothWindow)
+    angSpds = abs(numpy.diff(smoothedOrientations))/timestep
+    MIN_PEAK_SPD=30
+    sacInds = tools.local_minima(-angSpds) & (angSpds > MIN_PEAK_SPD)
+    sacSpds = angSpds[sacInds]
 
-    sacs = tools.zigzag(smoothedOrientations)
-    sacInds = abs(sacs) > 15
-    saccades = sacs[sacInds]
-    return saccades
+    MIN_SAC_SPD=5
+    inSac = angSpds > MIN_SAC_SPD
+    startInds = pylab.find(numpy.diff(inSac.view(dtype=int8)) == 1)
+    stopInds = pylab.find(numpy.diff(inSac.view(dtype=int8)) == -1)
+    if stopInds[-1] < startInds[-1]:
+        l = stopInds.tolist()
+        l.append(len(inSac)-1)
+        stopInds = numpy.array(l)
+    if startInds[0] > stopInds[0]:
+        l = startInds.tolist()
+        l.insert(0,0)
+        startInds = numpy.array(l)
 
-rootDir = '/home/peter/data/'
-#baseDirs = ['grayFilter','circularPolarizer', 'uvFilter' ]
-baseDirs = ['noFilter','circularPolarizer','indoor/halogen','grayFilter','blueFilter','noFilter/cloudy','circularPolarizer/cloudy','grayFilter/cloudy']
+    angDisp = numpy.zeros(len(angSpds))
+    for i, startInd in enumerate(startInds):
+        stopInd = stopInds[i]
+        angDisp[startInd:stopInd] = smoothedOrientations[stopInd] - smoothedOrientations[startInd]
+
+    sacAmps = angDisp[sacInds]
+    return sacAmps
+
+#rootDir = '/home/peter/data/'
+#baseDirs = ['noFilter', 'circularPolarizer', 'grayFilter', 'blueFilter' ]
+#baseDirs = ['noFilter','circularPolarizer','indoor/halogen','grayFilter','blueFilter','noFilter/cloudy','circularPolarizer/cloudy','grayFilter/cloudy']
 #PLOTCOLORS = ['g','r','k','b','c','m','y','k']
-PLOTCOLORS = [[0,.9,0],[1,0,0],[1,.5,0],[.2,.2,.2],[0,0,1],[0,.5,0],[.6,0,0],[.5,.5,.5]]
+#PLOTCOLORS = [[0,.9,0],[1,0,0],[1,.5,0],[.2,.2,.2],[0,0,1],[0,.5,0],[.6,0,0],[.5,.5,.5]]
 
-#rootDir = '/'
-#baseDirs = ['/media/7490D76624EDD7B1/data/indoor/halogen','/home/peter/data/circularPolarizer','/home/peter/data/noFilter','/home/peter/data/grayFilter','/home/peter/data/blueFilter']
-#PLOTCOLORS = ['m','r','g','k','b','c','k','y']
+rootDir = '/'
+baseDirs = ['/media/weir05/data/indoor/dark','/home/peter/data/circularPolarizer','/home/peter/data/noFilter','/home/peter/data/blueFilter']
+PLOTCOLORS = ['m','r','g','k','b','c','k','y']
 try:
     flies
 except NameError:
@@ -78,7 +113,7 @@ except NameError:
         flies[baseDir] = fls
         skies[baseDir] = sks
     
-MAX_NUM_STOPS = 5
+MAX_NUM_STOPS = 6
 SAVEFIGS = False
 CHANGEBUFFER = 10
 STARTBUFFER = 0
@@ -89,6 +124,7 @@ SPEED = 0.5
 DMAX = 330 #800
 Dist = {}
 sacAmp = {}
+sacNum = {}
 fig1 = pylab.figure()
 #for b, baseDir in enumerate(flies.keys()):
 for b, baseDir in enumerate(baseDirs):
@@ -97,7 +133,9 @@ for b, baseDir in enumerate(baseDirs):
     D.fill(nan)
     S = numpy.empty(numFlies)
     S.fill(nan)
-    ax = fig1.add_subplot(1,len(flies),b+1)
+    Sn = numpy.empty(numFlies)
+    Sn.fill(nan)
+    ax = fig1.add_subplot(2,4,b+1)
     th = numpy.arange(0,2*numpy.pi,.01)
     R1 = 100 #400
     xcirc = R1*cos(th)
@@ -120,13 +158,20 @@ for b, baseDir in enumerate(baseDirs):
         
         num_blocks = 1
         min_time = .9*num_blocks*12*60
-        max_time = num_blocks*12*60
-        inds = (times - beginTime) > max_time
+        #max_time = num_blocks*12*60 + beginTime
+
+        if len(sky['changeTimes']) >=5:
+            max_time = sky['changeTimes'][4] - CHANGEBUFFER
+        else:
+            max_time = 0
+
+        inds = times > max_time
         orientations[inds] = numpy.nan
         times[inds] = numpy.nan
         
         if fly.has_key('stopTimes'):
-            num_stops = sum(fly['stopTimes'] < beginTime + max_time)
+            #num_stops = sum(fly['stopTimes'] < max_time)
+            num_stops = sum([sT < max_time for sT in fly['stopTimes']])
             for i, sT in enumerate(fly['stopTimes']):
                 inds = (times > sT - STOPBUFFER) & (times < fly['startTimes'][i]+STOPBUFFER)
                 orientations[inds] = numpy.nan
@@ -139,9 +184,10 @@ for b, baseDir in enumerate(baseDirs):
         if numpy.nansum(numpy.diff(times))>min_time and num_stops <= MAX_NUM_STOPS:
             t=numpy.diff(times)
             timestep = numpy.median(t[~numpy.isnan(t)])
-            saccades = detect_saccades(orientations,timestep)
-            S[fNum] = numpy.mean(abs(saccades))
-            #S[fNum] = len(saccades)
+            #saccades = detect_saccades(orientations,timestep)
+            #S[fNum] = beginTime - 60*60
+            #S[fNum], Sn[fNum] = numpy.mean(abs(saccades)), len(saccades)
+            S, Sn = numpy.array([]), numpy.array([])
             
             rotations = numpy.empty(times.shape)
             rotations.fill(numpy.nan)
@@ -168,7 +214,7 @@ for b, baseDir in enumerate(baseDirs):
             l = ax.plot(simTrajX,simTrajY,color=PLOTCOLORS[b])
             
             changeInds = [abs(times[~numpy.isnan(times)] - (sky['changeTimes'][i]-CHANGEBUFFER)).argmin() for i in range(len(sky['changeTimes']))]
-            ax.plot(simTrajX[changeInds[1:4]],simTrajY[changeInds[1:4]],'.',color=l[0].get_color())
+            #ax.plot(simTrajX[changeInds[1:4]],simTrajY[changeInds[1:4]],'.',color=l[0].get_color())
             #ax.scatter(simTrajX[-1],simTrajY[-1],edgecolors=l[0].get_color(),facecolors='k')
             ax.plot(simTrajX[-1],simTrajY[-1],'o',markeredgecolor=l[0].get_color(),markerfacecolor='k')
 
@@ -180,6 +226,7 @@ for b, baseDir in enumerate(baseDirs):
     fig1.set_facecolor('w')
     Dist[baseDir] = D.copy()
     sacAmp[baseDir] = S.copy()
+    sacNum[baseDir] = Sn.copy()
 
 fig2 = pylab.figure()
 pylab.hold('on')
@@ -201,7 +248,7 @@ fig3 = pylab.figure()
 ax = fig3.add_subplot(111)
 #pylab.boxplot([Dist[k][~numpy.isnan(Dist[k])] for k in Dist.keys()])
 ax.boxplot([Dist[k][~numpy.isnan(Dist[k])] for k in baseDirs])
-xtickText = [bd + ', N=' + str(sum(~numpy.isnan(Dist[bd]))) for bd in baseDirs]
+xtickText = [bd[-24:] + ', N=' + str(sum(~numpy.isnan(Dist[bd]))) for bd in baseDirs]
 ax.set_xticklabels(xtickText)
 pylab.draw()
 
@@ -220,7 +267,8 @@ for b, baseDir in enumerate(baseDirs):
 
 ax.set_xlim((-.5,b+.5))
 ax.set_xticks(range(b+1))
-ax.set_xticklabels(baseDirs)
+#ax.set_xticklabels(baseDirs)
+ax.set_xticklabels(xtickText)
 
 if SAVEFIGS == True:
     fig1.savefig('simulatedTrajectories.svg', dpi=600)
